@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env/
+.venv/
+venv/
+
+# VSCode
+.vscode/
+
+# MacOS
+.DS_Store
+
+# Jupyter
+*.ipynb_checkpoints
+
+# Migrations
+backend/migrations/__pycache__/
+backend/app/**/__pycache__/
+
+# 기타
+*.log
+*.tmp
+*.swp
+*.bak
+
+# Node/npm
+node_modules/
+
+# Docker
+*.tar
+
+# Test
+coverage/
+htmlcov/
+
+# Ignore secrets
+*.env
+secrets/
+
+# Ignore build
+build/
+dist/
+
+# Ignore reports
+reports/
+
+# Ignore scripts
+scripts/__pycache__/
+
+# Ignore docs
+backend/docs/__pycache__/
+
+# Ignore cache
+.cache/
+
+# Ignore pip
+pip-wheel-metadata/
+
+# Ignore editor backups
+*~
+*.orig
+*.rej
+
+# Ignore OS
+Thumbs.db
