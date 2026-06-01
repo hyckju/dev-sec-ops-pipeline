@@ -91,6 +91,8 @@ cd backend
 
 ### Phase 2 — GitHub Actions 워크플로 (7월 계획)
 
+구현 설계: [`phase-2-github-actions.md`](./phase-2-github-actions.md) — 워크플로 YAML 초안, 시크릿, 구현 순서, 계약 테스트 정리.
+
 | # | 작업 | 위치 |
 |---|---|---|
 | 2.1 | `.github/workflows/secscan.yml` (대상 리포에 들어갈 파일) | curl POST → `pipeline_id` 수신 → 30초마다 `/status` 폴링 → 결과 출력 |
