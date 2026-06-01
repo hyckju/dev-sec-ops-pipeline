@@ -15,7 +15,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_db
-from app.core.constants import PipelineStatus
+from app.core.config import settings
+from app.core.constants import PipelineStatus, Severity
 from app.db.models.pipeline import Pipeline
 from app.main import app
 from app.services.pipeline.pipeline_service import PipelineService
@@ -64,6 +65,24 @@ def _stub_pipeline() -> Pipeline:
     p.finished_at = None
     p.created_at = datetime.now(timezone.utc)
     return p
+
+
+def _stub_vuln(severity: Severity, cve_id: str | None = None):
+    """VulnerabilityResponse.model_validate가 읽을 수 있는 가짜 Vulnerability 객체."""
+    v = MagicMock()
+    v.id = uuid.uuid4()
+    v.pipeline_id = uuid.uuid4()
+    v.cve_id = cve_id
+    v.severity = severity
+    v.title = "stub vuln"
+    v.description = None
+    v.file_path = None
+    v.line_number = None
+    v.rule_id = None
+    v.created_at = datetime.now(timezone.utc)
+    v.raw_output = None
+    v.kev_listed = False
+    return v
 
 
 # ── POST /api/v1/pipelines/ — 정상 케이스 ─────────────────────────────
@@ -279,3 +298,121 @@ async def test_get_vulnerabilities_accepts_valid_filter_params(client, override_
     )
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+# ── GET /api/v1/pipelines/{id}/status — 가벼운 폴링 ───────────────────
+
+
+async def test_get_status_returns_404_for_missing(client, override_db):
+    """존재하지 않는 파이프라인 status 조회는 404."""
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    override_db.execute = AsyncMock(return_value=result_mock)
+
+    missing_id = uuid.uuid4()
+    resp = await client.get(f"/api/v1/pipelines/{missing_id}/status")
+    assert resp.status_code == 404
+
+
+async def test_get_status_returns_progress_shape_without_vulnerabilities(client, override_db):
+    """status는 진행 단계 + 취약점 수만 반환하고 vulnerabilities를 직렬화하지 않아야 한다."""
+    pipeline = _stub_pipeline()
+    pipeline.status = PipelineStatus.RUNNING
+    pipeline.steps = [{"type": "clone"}, {"type": "security_scan"}]
+
+    pipeline_result = MagicMock()
+    pipeline_result.scalar_one_or_none.return_value = pipeline
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 5
+    override_db.execute = AsyncMock(side_effect=[pipeline_result, count_result])
+
+    resp = await client.get(f"/api/v1/pipelines/{pipeline.id}/status")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # CI 폴링이 의존하는 핵심 필드
+    assert body["id"] == str(pipeline.id)
+    assert body["status"] == "running"
+    assert body["current_step"] == "security_scan"  # steps[-1]["type"]
+    assert body["completed_steps"] == 2
+    assert body["total_steps"] == 6
+    assert body["vulnerability_count"] == 5
+    # 가벼움 보장 — 전체 취약점 목록은 포함하지 않는다
+    assert "vulnerabilities" not in body
+
+
+async def test_get_status_current_step_none_when_no_steps(client, override_db):
+    """steps가 비어 있으면 current_step은 None, completed_steps는 0이어야 한다."""
+    pipeline = _stub_pipeline()
+    pipeline.steps = []
+
+    pipeline_result = MagicMock()
+    pipeline_result.scalar_one_or_none.return_value = pipeline
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 0
+    override_db.execute = AsyncMock(side_effect=[pipeline_result, count_result])
+
+    resp = await client.get(f"/api/v1/pipelines/{pipeline.id}/status")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["current_step"] is None
+    assert body["completed_steps"] == 0
+    assert body["vulnerability_count"] == 0
+
+
+# ── GET /api/v1/pipelines/{id} — summary 집계 + KEV 주입 ──────────────
+
+
+async def test_get_pipeline_summary_counts_and_kev(client, override_db):
+    """summary는 심각도별 카운트(합 == vulnerabilities 길이) + KEV 수를 집계해야 한다."""
+    pipeline = _stub_pipeline()
+    pipeline.vulnerabilities = [
+        _stub_vuln(Severity.CRITICAL, cve_id="CVE-1"),
+        _stub_vuln(Severity.HIGH, cve_id="CVE-2"),
+        _stub_vuln(Severity.MEDIUM, cve_id=None),
+    ]
+
+    pipeline_result = MagicMock()
+    pipeline_result.scalar_one_or_none.return_value = pipeline
+    # _build_vuln_responses의 KEV 조인 — CVE-1만 KEV 등재
+    kev_result = MagicMock()
+    kev_result.all.return_value = [("CVE-1",)]
+    override_db.execute = AsyncMock(side_effect=[pipeline_result, kev_result])
+
+    resp = await client.get(f"/api/v1/pipelines/{pipeline.id}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    summary = body["summary"]
+    assert summary["critical"] == 1
+    assert summary["high"] == 1
+    assert summary["medium"] == 1
+    assert summary["low"] == 0
+    assert summary["info"] == 0
+    # 심각도 카운트 합 == 취약점 수
+    sev_total = sum(summary[k] for k in ("critical", "high", "medium", "low", "info"))
+    assert sev_total == len(body["vulnerabilities"]) == 3
+    # KEV 주입 — CVE-1 1건만
+    assert summary["kev_count"] == 1
+
+
+# ── 인증 (verify_api_key) — settings.API_KEY 활성 시 ─────────────────
+
+
+async def test_auth_rejects_when_key_set_and_header_missing(client, override_db, monkeypatch):
+    """API_KEY 설정 시 X-API-Key 헤더 없는 요청은 401 (기존 테스트는 키 미설정이라 영향 없음)."""
+    monkeypatch.setattr(settings, "API_KEY", "secret-key")
+    resp = await client.get("/api/v1/pipelines/")
+    assert resp.status_code == 401
+
+
+async def test_auth_passes_when_header_matches(client, override_db, monkeypatch):
+    """API_KEY 설정 + 헤더 일치 시 정상 통과(200)해야 한다."""
+    monkeypatch.setattr(settings, "API_KEY", "secret-key")
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.all.return_value = []
+    override_db.execute = AsyncMock(return_value=result_mock)
+
+    resp = await client.get("/api/v1/pipelines/", headers={"X-API-Key": "secret-key"})
+    assert resp.status_code == 200
