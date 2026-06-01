@@ -100,7 +100,10 @@ Phase 0 안전망을 신규 코드까지 확장. 11건 추가, 전체 94 passed 
 
 ### ② Phase 1 마무리 잔여
 
-- **1.5 백엔드 배포 위치 결정** (의사결정 대기, 로드맵 §4.1) — 권장: 1차 ngrok 검증 → 8~9월 영구 배포(EC2/Oracle/학교 서버)
+- **1.5 백엔드 배포 위치 결정** ✅ (2026-06-01) — **이미지 레지스트리: DockerHub** 사용 확정.
+  - `backend/Dockerfile`(1.2)로 빌드한 이미지를 DockerHub에 publish.
+  - **publish 방식**: GitHub Actions 자동화(push/tag 시 `docker build` → DockerHub push). → Phase 2 ③에서 워크플로로 작성.
+  - **런타임 호스트(이미지를 실제 run할 곳)는 미정** — DockerHub는 레지스트리일 뿐 실행 위치가 아님. 추후 결정(ngrok/EC2/Oracle/학교 서버 후보). 로드맵 §4.1 갱신 필요.
 - DB/도커 환경에서 수동 검증: `docker build`, `POST → /status 폴링 → summary` 스모크
 - (선택) `SecurityScanException` 정리 — 보류 유지. Phase 2에서 차단 정책 다룰 때 함께 처리 고려
 
@@ -108,6 +111,10 @@ Phase 0 안전망을 신규 코드까지 확장. 11건 추가, 전체 94 passed 
 
 이번에 만든 `/status`(폴링)와 `summary`(코멘트용)가 여기서 처음 소비된다.
 
+- `.github/workflows/docker-publish.yml` (이 리포) — **1.5 결정 구현**
+  - push/tag 시 `backend/Dockerfile` build → DockerHub push
+  - `secrets.DOCKERHUB_USERNAME` / `secrets.DOCKERHUB_TOKEN` 주입, `docker/login-action` + `docker/build-push-action`
+  - 런타임 호스트 결정 후 해당 호스트가 이 이미지를 pull
 - `.github/workflows/secscan.yml` (대상 리포에 들어갈 파일)
   - `curl POST /api/v1/pipelines/` (+ `X-API-Key` 헤더) → `pipeline_id` 수신
   - 30초 간격 `GET /{id}/status` 폴링 → `status`가 success/failed 될 때까지 대기
