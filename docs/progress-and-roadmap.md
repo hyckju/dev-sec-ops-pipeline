@@ -1,6 +1,6 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-05-30
+마지막 업데이트: 2026-06-01
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
@@ -13,7 +13,8 @@
 
 백엔드 보안 스캔 엔진(6단계 파이프라인 + Semgrep + NVD + AI 후처리)은 **선행 구현 완료**.
 현재는 외부 CI/CD(GitHub Actions 등)에서 호출 가능한 형태로 다듬는 **준비 단계**.
-Phase 0(테스트 토대) **부분 완료** (83 passed + 8 skipped, semgrep 환경 충족 시 91 전체), Phase 1(CI/CD 인터페이스) 진입 전.
+Phase 0(테스트 토대) **부분 완료** (83 passed + 8 skipped, semgrep 환경 충족 시 91 전체).
+Phase 1(CI/CD 인터페이스) **코드 작업(1.1~1.4) 완료** — 인증·Dockerfile·status 엔드포인트·summary 필드. 1.5(배포 위치)만 의사결정 대기.
 
 ---
 
@@ -74,13 +75,17 @@ cd backend
 
 외부에서 호출 가능한 형태로 백엔드를 다듬는다. Phase 0의 API 계약 테스트가 *회귀 안전망* 역할.
 
+작업 일지: [`phase-1-cicd-interface.md`](./phase-1-cicd-interface.md)
+
 | # | 작업 | 위치 | 상태 |
 |---|---|---|---|
-| 1.1 | API 키 인증 추가 | `app/api/deps.py`에 `verify_api_key` 의존성, `pipelines.py` 라우터에 적용 | 대기 |
-| 1.2 | Dockerfile 작성 | `backend/Dockerfile` (현재 `backend/docker/`에 nginx만 있음) | 대기 |
-| 1.3 | 가벼운 상태 폴링 엔드포인트 | `GET /api/v1/pipelines/{id}/status` — status + 진행 단계 + vuln 카운트만 반환 (전체 vulnerabilities 직렬화 X) | 대기 |
-| 1.4 | summary 필드 추가 | `PipelineDetailResponse.summary: {critical, high, medium, low, info, kev_count}` — PR 코멘트 작성용 | 대기 |
+| 1.1 | API 키 인증 추가 | `app/api/deps.py`의 `verify_api_key` 의존성, `pipelines.py` 라우터에 적용 | ✅ 완료 (키 미설정 시 비활성) |
+| 1.2 | Dockerfile 작성 | `backend/Dockerfile` + `backend/.dockerignore` | ✅ 완료 |
+| 1.3 | 가벼운 상태 폴링 엔드포인트 | `GET /api/v1/pipelines/{id}/status` — status + 진행 단계 + vuln 카운트만 반환 (전체 vulnerabilities 직렬화 X) | ✅ 완료 |
+| 1.4 | summary 필드 추가 | `PipelineDetailResponse.summary: {critical, high, medium, low, info, kev_count}` — PR 코멘트 작성용 | ✅ 완료 |
 | 1.5 | 백엔드 배포 위치 결정 | (의사결정 필요) | 대기 — 4.1 참조 |
+
+> 신규 코드(인증/status/summary)에 대한 테스트는 다음 세션으로 분리. `SecurityScanException` 정리는 보류 유지.
 
 ---
 

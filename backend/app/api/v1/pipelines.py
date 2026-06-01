@@ -2,19 +2,27 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_db
+from app.api.deps import get_db, verify_api_key
 from app.db.models.cve_catalog import CveCatalog
 from app.db.models.pipeline import Pipeline
 from app.db.models.vulnerability import Vulnerability
-from app.schemas.pipeline import PipelineCreate, PipelineDetailResponse, PipelineResponse
+from app.schemas.pipeline import (
+    PipelineCreate,
+    PipelineDetailResponse,
+    PipelineResponse,
+    PipelineStatusResponse,
+    PipelineSummary,
+)
 from app.schemas.vulnerability import VulnerabilityResponse
 from app.services.pipeline.pipeline_service import PipelineService
 
-router = APIRouter()
+# 모든 파이프라인 엔드포인트를 verify_api_key로 일괄 보호.
+# (projects 라우터/health는 이번 범위 밖 — 추후 필요 시 동일 의존성 적용)
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 
@@ -26,6 +34,46 @@ _SEVERITY_RANK: dict[str, int] = {
     "low": 3,
     "info": 4,
 }
+
+
+async def _build_vuln_responses(
+    db: AsyncSession, vulns
+) -> list[VulnerabilityResponse]:
+    """Vulnerability ORM 목록을 VulnerabilityResponse로 변환하며 kev_listed를 주입한다.
+
+    cve_id들을 CveCatalog와 조인해 KEV 등재 여부를 채운다.
+    get_pipeline(summary 집계용)과 vulnerabilities 엔드포인트가 공유한다.
+    """
+    all_cve_ids = [v.cve_id for v in vulns if v.cve_id]
+    kev_set: set[str] = set()
+    if all_cve_ids:
+        kev_result = await db.execute(
+            select(CveCatalog.cve_id)
+            .where(CveCatalog.cve_id.in_(all_cve_ids))
+            .where(CveCatalog.kev_listed.is_(True))
+        )
+        kev_set = {row[0] for row in kev_result.all()}
+
+    responses: list[VulnerabilityResponse] = []
+    for vuln in vulns:
+        resp = VulnerabilityResponse.model_validate(vuln)
+        if vuln.cve_id and vuln.cve_id in kev_set:
+            resp = resp.model_copy(update={"kev_listed": True})
+        responses.append(resp)
+    return responses
+
+
+def _build_summary(responses: list[VulnerabilityResponse]) -> PipelineSummary:
+    """VulnerabilityResponse 목록에서 심각도별 카운트 + KEV 수를 집계한다."""
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    kev_count = 0
+    for resp in responses:
+        sev = resp.severity.value
+        if sev in counts:
+            counts[sev] += 1
+        if resp.kev_listed:
+            kev_count += 1
+    return PipelineSummary(**counts, kev_count=kev_count)
 
 
 @router.post("/", response_model=PipelineResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -65,7 +113,48 @@ async def get_pipeline(pipeline_id: uuid.UUID, db: DbDep):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pipeline {pipeline_id} not found",
         )
-    return pipeline
+
+    # KEV 주입 + summary 집계 (vulnerabilities는 selectinload로 이미 로드됨)
+    responses = await _build_vuln_responses(db, pipeline.vulnerabilities)
+    detail = PipelineDetailResponse.model_validate(pipeline)
+    detail.vulnerabilities = responses
+    detail.summary = _build_summary(responses)
+    return detail
+
+
+@router.get("/{pipeline_id}/status", response_model=PipelineStatusResponse)
+async def get_pipeline_status(pipeline_id: uuid.UUID, db: DbDep):
+    """가벼운 상태 폴링 — status + 진행 단계 + 취약점 수만 반환 (CI 폴링용)."""
+    result = await db.execute(
+        select(Pipeline).where(Pipeline.id == pipeline_id)
+    )
+    pipeline = result.scalar_one_or_none()
+    if pipeline is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pipeline {pipeline_id} not found",
+        )
+
+    # 취약점은 직렬화하지 않고 개수만 카운트
+    count_result = await db.execute(
+        select(func.count())
+        .select_from(Vulnerability)
+        .where(Vulnerability.pipeline_id == pipeline_id)
+    )
+    vulnerability_count = count_result.scalar_one()
+
+    steps = pipeline.steps or []
+    current_step = steps[-1].get("type") if steps else None
+
+    return PipelineStatusResponse(
+        id=pipeline.id,
+        status=pipeline.status,
+        current_step=current_step,
+        completed_steps=len(steps),
+        vulnerability_count=vulnerability_count,
+        started_at=pipeline.started_at,
+        finished_at=pipeline.finished_at,
+    )
 
 
 @router.get("/{pipeline_id}/vulnerabilities", response_model=list[VulnerabilityResponse])
@@ -105,24 +194,8 @@ async def get_pipeline_vulnerabilities(
     result = await db.execute(query)
     vulns = result.scalars().all()
 
-    # KEV-listed CVE ID 집합 조회 (kev_only 또는 항상 응답에 포함)
-    all_cve_ids = [v.cve_id for v in vulns if v.cve_id]
-    kev_set: set[str] = set()
-    if all_cve_ids:
-        kev_result = await db.execute(
-            select(CveCatalog.cve_id)
-            .where(CveCatalog.cve_id.in_(all_cve_ids))
-            .where(CveCatalog.kev_listed.is_(True))
-        )
-        kev_set = {row[0] for row in kev_result.all()}
-
-    # VulnerabilityResponse 변환 + kev_listed 주입
-    responses: list[VulnerabilityResponse] = []
-    for vuln in vulns:
-        resp = VulnerabilityResponse.model_validate(vuln)
-        if vuln.cve_id and vuln.cve_id in kev_set:
-            resp = resp.model_copy(update={"kev_listed": True})
-        responses.append(resp)
+    # VulnerabilityResponse 변환 + kev_listed 주입 (get_pipeline과 공유)
+    responses = await _build_vuln_responses(db, vulns)
 
     # Python 레벨 필터 (CWE, min_cvss, kev_only)
     filtered: list[VulnerabilityResponse] = []

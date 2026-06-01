@@ -13,6 +13,9 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str = "change-me-in-production"
+    # CI/CD 인증용 API 키. 비어 있으면 인증 비활성화 (개발/검증 단계).
+    # 값이 설정되면 보호된 엔드포인트는 X-API-Key 헤더로 이 값을 요구한다.
+    API_KEY: str = ""
 
     # External APIs
     NVD_API_KEY: str = ""

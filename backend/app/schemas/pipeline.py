@@ -61,8 +61,36 @@ class PipelineResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PipelineSummary(BaseModel):
+    """심각도별 취약점 집계 + KEV 등재 수 (PR 코멘트/차단 정책 판단용)."""
+    critical: int = 0
+    high: int = 0
+    medium: int = 0
+    low: int = 0
+    info: int = 0
+    kev_count: int = 0
+
+
 class PipelineDetailResponse(PipelineResponse):
     vulnerabilities: list["VulnerabilityResponse"] = []
+    summary: PipelineSummary = PipelineSummary()
+
+
+class PipelineStatusResponse(BaseModel):
+    """가벼운 상태 폴링용 응답 (전체 vulnerabilities 직렬화 없음).
+
+    GitHub Action이 30초 간격으로 폴링하며 status/진행 단계/취약점 수만 확인한다.
+    """
+    id: uuid.UUID
+    status: PipelineStatus
+    current_step: str | None        # 마지막으로 기록된 스텝 type (없으면 None)
+    completed_steps: int            # 기록된 스텝 수 (len(steps))
+    total_steps: int = 6
+    vulnerability_count: int
+    started_at: datetime | None
+    finished_at: datetime | None
+
+    model_config = {"from_attributes": True}
 
 
 from app.schemas.vulnerability import VulnerabilityResponse  # noqa: E402
