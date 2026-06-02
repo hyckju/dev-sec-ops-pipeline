@@ -2,7 +2,7 @@
 
 작성: 2026-06-02
 관련 문서: [`phase-1-cicd-interface.md`](./phase-1-cicd-interface.md), [`progress-and-roadmap.md`](./progress-and-roadmap.md)
-상태: **설계 (구현 전)** — 본 문서로 합의 후 YAML 작성 착수
+상태: **구현 중** — 계약 테스트 + 두 워크플로 작성 완료(2026-06-02). 잔여는 환경 의존(시크릿 등록·ngrok·WebGoat 검증)과 보류(차단 정책).
 
 ---
 
@@ -242,12 +242,22 @@ Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phas
 
 ## 구현 순서 (체크리스트)
 
-1. [ ] 계약 테스트 `test_action_contract.py` 먼저 작성 (TDD — 인터페이스 고정)
-2. [ ] `docker-publish.yml` 작성 + DockerHub 시크릿 등록 → push로 이미지 1회 publish 확인
-3. [ ] 백엔드 ngrok 노출 + `API_KEY` 설정 (1차 런타임)
-4. [ ] `secscan.yml` 작성 (trigger → poll → comment), `act`로 dry-run
-5. [ ] WebGoat fork에 배치 → PR로 실제 코멘트 확인
-6. [ ] (보류) 차단 정책 — 11월 실측 후 결정
+1. [x] 계약 테스트 `test_action_contract.py` 작성 (TDD — 인터페이스 고정) — **7건 통과**
+2. [x] `docker-publish.yml` 작성 → `.github/workflows/docker-publish.yml`. *시크릿 등록·publish 확인은 환경 작업(아래)*
+3. [ ] 백엔드 ngrok 노출 + `API_KEY` 설정 (1차 런타임) — **환경 작업**
+4. [x] `secscan.yml` 작성 (trigger → poll → comment) → `docs/templates/secscan.yml`(대상 리포 복사용). `act` dry-run은 환경 작업
+5. [ ] WebGoat fork에 배치 → PR로 실제 코멘트 확인 — **환경 작업**
+6. [ ] (보류) 차단 정책 — 11월 실측 후 결정. `secscan.yml`에 `if: false` 자리표시 마련됨
+
+### 코드 작업 완료분 (이 리포에 머지됨)
+- `backend/tests/integration/github/test_action_contract.py` — 응답 스키마 snapshot 7건
+- `.github/workflows/docker-publish.yml` — 이미지 build & push (활성 워크플로)
+- `docs/templates/secscan.yml` — 스캔 대상 리포에 복사할 템플릿 (이 리포에서 실행되지 않게 templates/에 보관)
+
+### 남은 환경 작업 (코드 외)
+- DockerHub: `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` 시크릿 등록 → main push로 1회 publish 확인
+- 백엔드 런타임: `ngrok http 8000` 노출 + `API_KEY` 설정 (URL은 무료 ngrok 특성상 매번 변동)
+- 대상 리포(WebGoat fork): `secscan.yml` 복사 + `SECSCAN_BACKEND_URL`/`SECSCAN_API_KEY` 시크릿 → PR 생성해 코멘트 확인
 
 ---
 

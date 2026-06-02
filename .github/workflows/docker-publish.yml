@@ -1,0 +1,46 @@
+# 백엔드 이미지를 DockerHub에 build & push (Phase 1.5 결정 구현).
+# 런타임 호스트는 미정 — 여기서는 레지스트리 publish까지만 한다.
+# 실제 run(deploy)은 호스트 확정 후 별도 잡(SSH docker pull && run / watchtower)으로 이어붙인다.
+name: Publish backend image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'backend/**'
+      - '.github/workflows/docker-publish.yml'
+  workflow_dispatch:
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}   # Read/Write 액세스 토큰 (계정 비번 X)
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/devsecops-backend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend          # Dockerfile이 backend/에 있고 .dockerignore가 venv 제외 (1.2)
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

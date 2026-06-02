@@ -1,0 +1,119 @@
+# ──────────────────────────────────────────────────────────────────────────
+# secscan.yml — DevSecOps 보안 스캔 워크플로 (스캔 대상 리포에 배포하는 템플릿)
+#
+# ⚠️ 이 파일은 *이 백엔드 리포가 아니라* "스캔하려는 사용자 프로젝트" 리포의
+#    .github/workflows/secscan.yml 로 복사해서 사용한다. (이 리포에 두면 자기 PR마다
+#    백엔드를 호출하다 실패하므로 템플릿(docs/templates/)으로만 보관)
+#
+# 필요한 시크릿 (대상 리포 Settings → Secrets and variables → Actions):
+#   SECSCAN_BACKEND_URL  백엔드 베이스 URL  (예: https://xxxx.ngrok-free.app)
+#   SECSCAN_API_KEY      백엔드 settings.API_KEY 와 동일 값 (백엔드가 키 미설정이면 생략 가능)
+#
+# 동작: PR 이벤트 → 백엔드에 스캔 요청(trigger) → 30초 간격 폴링(poll) → PR 코멘트(comment).
+# 현재는 *리포팅 모드* — 취약점을 찾아도 워크플로를 fail시키지 않는다 (차단 정책은 11월 실증 후 결정).
+# ──────────────────────────────────────────────────────────────────────────
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write   # PR 코멘트 작성용
+  contents: read
+
+jobs:
+  secscan:
+    runs-on: ubuntu-latest
+    env:
+      API: ${{ secrets.SECSCAN_BACKEND_URL }}
+      KEY: ${{ secrets.SECSCAN_API_KEY }}
+    steps:
+      - name: Trigger pipeline
+        id: trigger
+        run: |
+          set -euo pipefail
+          resp=$(curl -fsS -X POST "$API/api/v1/pipelines/" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: $KEY" \
+            -d "{\"github_url\": \"${{ github.server_url }}/${{ github.repository }}\"}")
+          id=$(echo "$resp" | jq -r '.id')
+          if [ -z "$id" ] || [ "$id" = "null" ]; then
+            echo "::error::파이프라인 생성 실패 — 응답에 id 없음: $resp"; exit 1
+          fi
+          echo "pipeline_id=$id" >> "$GITHUB_OUTPUT"
+          echo "::notice::pipeline $id created"
+
+      - name: Poll status (30s 간격, 최대 30분)
+        id: poll
+        run: |
+          set -uo pipefail
+          PID="${{ steps.trigger.outputs.pipeline_id }}"
+          for i in $(seq 1 60); do
+            st=$(curl -fsS "$API/api/v1/pipelines/$PID/status" -H "X-API-Key: $KEY") || st='{}'
+            status=$(echo "$st" | jq -r '.status // "unknown"')
+            step=$(echo "$st" | jq -r '.current_step // "-"')
+            done_n=$(echo "$st" | jq -r '.completed_steps // 0')
+            total_n=$(echo "$st" | jq -r '.total_steps // 6')
+            echo "[$i] status=$status step=$step ($done_n/$total_n)"
+            case "$status" in
+              success|failed|cancelled)
+                echo "final=$status" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            esac
+            sleep 30
+          done
+          echo "final=timeout" >> "$GITHUB_OUTPUT"
+          echo "::error::폴링 타임아웃 (30분)"; exit 1
+
+      - name: Fetch detail (summary)
+        if: always() && steps.trigger.outputs.pipeline_id != ''
+        run: |
+          set -euo pipefail
+          PID="${{ steps.trigger.outputs.pipeline_id }}"
+          curl -fsS "$API/api/v1/pipelines/$PID" -H "X-API-Key: $KEY" > detail.json
+          echo "saved $(wc -c < detail.json) bytes"
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('detail.json') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const d = JSON.parse(fs.readFileSync('detail.json', 'utf8'));
+            const s = d.summary || {};
+            const vulnCount = (d.vulnerabilities || []).length;
+            const MARKER = '<!-- devsecops-secscan -->';   // 같은 PR 재실행 시 코멘트 갱신용 마커
+            const body = [
+              MARKER,
+              '## 🔒 보안 스캔 결과',
+              '',
+              `상태: **${d.status}** · 취약점 ${vulnCount}건`,
+              '',
+              '| Critical | High | Medium | Low | Info | KEV |',
+              '|---:|---:|---:|---:|---:|---:|',
+              `| ${s.critical||0} | ${s.high||0} | ${s.medium||0} | ${s.low||0} | ${s.info||0} | ${s.kev_count||0} |`,
+              '',
+              '<sub>DevSecOps Pipeline · 리포팅 모드 (차단 없음)</sub>',
+            ].join('\n');
+
+            // 중복 코멘트 정리 — 봇이 남긴 마커 코멘트가 있으면 update, 없으면 create
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => (c.body || '').includes(MARKER));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      # ── (FUTURE) 차단 정책 — 11월 false positive 실측 후 활성화 (로드맵 §4.2) ──
+      # 후보: KEV만 차단 / Critical+High 차단 / 리포팅만. 아래는 KEV 차단 예시.
+      - name: (FUTURE) Enforce policy
+        if: false   # ← 정책 확정 시 true 로
+        run: |
+          kev=$(jq -r '.summary.kev_count // 0' detail.json)
+          if [ "$kev" -gt 0 ]; then echo "::error::KEV 등재 취약점 ${kev}건 — 차단"; exit 1; fi

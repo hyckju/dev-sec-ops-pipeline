@@ -1,6 +1,6 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-06-01
+마지막 업데이트: 2026-06-02
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
@@ -13,8 +13,9 @@
 
 백엔드 보안 스캔 엔진(6단계 파이프라인 + Semgrep + NVD + AI 후처리)은 **선행 구현 완료**.
 현재는 외부 CI/CD(GitHub Actions 등)에서 호출 가능한 형태로 다듬는 **준비 단계**.
-Phase 0(테스트 토대) **부분 완료** (83 passed + 8 skipped, semgrep 환경 충족 시 91 전체).
-Phase 1(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(1.1~1.4) + 신규 코드 테스트 11건 + 1.5 배포 위치 결정(DockerHub 레지스트리). 잔여는 환경 의존 docker 스모크 / 보류 백로그뿐.
+Phase 0(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환경 충족 시 109 전체).
+Phase 1(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(1.1~1.4) + 신규 코드 테스트 11건 + 1.5 배포 위치 결정(DockerHub 레지스트리).
+Phase 2(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿. 잔여는 환경 작업(시크릿·ngrok·WebGoat 검증)과 보류(차단 정책).
 
 ---
 
@@ -66,7 +67,7 @@ cd backend
 
 | 우선순위 | 파일 (예정) | 검증 영역 | 의의 |
 |---|---|---|---|
-| 중 | `tests/integration/github/test_action_contract.py` | GitHub Action이 의존할 응답 필드 스키마 snapshot | Phase 2와 함께 작성 |
+| ~~중~~ ✅ | `tests/integration/github/test_action_contract.py` | GitHub Action이 의존할 응답 필드 스키마 snapshot | **완료 (2026-06-02, 7건)** — Phase 2와 함께 작성 |
 | 하 | semgrep 바이너리를 dev 의존성에 추가 (`requirements-dev.txt` 신설 또는 `pyproject.toml` optional group) | `test_cwe_scan_golden.py`의 8 skipped 테스트 활성화 — 룰팩 회귀 즉시 감지 |
 
 ---
@@ -89,18 +90,22 @@ cd backend
 
 ---
 
-### Phase 2 — GitHub Actions 워크플로 (7월 계획)
+### Phase 2 — GitHub Actions 워크플로 ⏳ 코드 작업 완료 (2026-06-02)
 
-구현 설계: [`phase-2-github-actions.md`](./phase-2-github-actions.md) — 워크플로 YAML 초안, 시크릿, 구현 순서, 계약 테스트 정리.
+구현 설계: [`phase-2-github-actions.md`](./phase-2-github-actions.md) — 워크플로 YAML, 시크릿, 구현 순서, 계약 테스트 정리.
 
-| # | 작업 | 위치 |
-|---|---|---|
-| 2.1 | `.github/workflows/secscan.yml` (대상 리포에 들어갈 파일) | curl POST → `pipeline_id` 수신 → 30초마다 `/status` 폴링 → 결과 출력 |
-| 2.2 | PR 코멘트 회신 액션 | `actions/github-script@v7`로 summary 마크다운 작성 |
-| 2.3 | 차단 정책 분기 | summary 기준 워크플로 fail 처리 (정책은 4.2에서 결정) |
-| 2.4 | 테스트 리포 1라운드 검증 | WebGoat 등 의도적 취약 리포에 워크플로 적용 |
+| # | 작업 | 위치 | 상태 |
+|---|---|---|---|
+| 2.0 | `docker-publish.yml` (이미지 build & push) | `.github/workflows/docker-publish.yml` | ✅ 작성 완료 (시크릿 등록·publish는 환경 작업) |
+| 2.1 | `secscan.yml` (대상 리포 배포 템플릿) | `docs/templates/secscan.yml` | ✅ 작성 완료 (trigger → poll → comment) |
+| 2.2 | PR 코멘트 회신 | `secscan.yml` 마지막 step (`github-script@v7`, 마커로 중복 코멘트 갱신) | ✅ 작성 완료 |
+| 2.3 | 차단 정책 분기 | `secscan.yml`에 `if: false` 자리표시 | ⏸ 보류 (정책 4.2, 11월 실측 후) |
+| 2.4 | 테스트 리포 1라운드 검증 | WebGoat 등 의도적 취약 리포 | ⬜ 환경 작업 (ngrok 노출 + fork PR) |
+| — | 계약 테스트 | `tests/integration/github/test_action_contract.py` | ✅ 7건 통과 |
 
-부수 작업: `actionlint`로 YAML 린트, `act`(nektos/act)로 로컬 dry-run.
+> `secscan.yml`은 *스캔 대상 리포*에 복사해 쓰는 파일이라 이 리포의 활성 워크플로(`.github/workflows/`)가 아닌 `docs/templates/`에 보관(자기 PR마다 실행되지 않도록). 남은 환경 작업: DockerHub 시크릿 등록 → publish 확인, 백엔드 ngrok 노출 + `API_KEY` 설정, WebGoat fork에 템플릿 배치 후 PR 코멘트 확인.
+
+부수 작업: `actionlint`로 YAML 린트, `act`(nektos/act)로 로컬 dry-run (러너 환경에서).
 
 ---
 
