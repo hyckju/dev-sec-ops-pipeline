@@ -1,0 +1,20 @@
+# 가상환경 (수백 MB — 컨테이너에서 재설치)
+.venv/
+venv/
+
+# 파이썬 캐시/빌드 산출물
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# 런타임에 불필요
+tests/
+.env
+*.db
+*.sqlite3
+
+# IDE / 로컬
+.idea/
+.vscode/

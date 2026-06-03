@@ -1,6 +1,6 @@
 # Phase 0 — 테스트 토대 완료 (작업 일지)
 
-작성: 2026-05-31
+작성: 2026-05-31 (Git/PR 준비 섹션 추가)
 작업 기간: 2026-05-28 ~ 2026-05-31
 
 관련 문서: [`progress-and-roadmap.md`](./progress-and-roadmap.md), [`security-scan-feature.md`](./security-scan-feature.md)
@@ -145,6 +145,85 @@ rm -rf backend/.venv/Lib/site-packages/app
 
 **예방**: IntelliJ에서 Python 모듈 추가 시 Flask facet 자동 추가 옵션 끄거나, venv 안에 들어가는 변경은 의심.
 
+### 4. `.idea/workspace.xml` 브랜치 전환 차단
+
+증상: `git checkout tst/Github-issue-1` 시 `error: Your local changes to the following files would be overwritten by checkout: .idea/workspace.xml`.
+
+원인: 파일이 main에는 존재하고 tst에는 없음 + 사용자가 IDE 사용 중 자동 수정. 덮어쓰면 변경분 손실되니 git이 거부.
+
+해결: IDE 런타임 상태 파일이라 그냥 버려도 IntelliJ가 재생성.
+```powershell
+git checkout -- .idea/workspace.xml
+git checkout tst/Github-issue-1
+```
+
+**예방 (장기)**: `.idea/workspace.xml`을 `.gitignore`에 추가. 더 적극적으로는 `.idea/` 전체 + `!.idea/.gitignore` (JetBrains 권장 패턴). 의사결정 대기 항목 참조.
+
+---
+
+## Git 작업 및 PR 준비 (2026-05-31)
+
+테스트 코드를 GitHub에 올리려다 만난 두 가지 차단을 정리.
+
+### 차단 1: GitHub push protection (Stripe / Slack 패턴)
+
+증상: 첫 push 시 GitHub가 `8e9c849f72cc341e...` 커밋에서 secret 탐지로 거부.
+- `cwe_798_hardcoded_credentials/vulnerable.py:19` — Stripe `sk_live_*` 패턴
+- `vulnerable.py:23` — Slack webhook URL (`https://hooks.slack.com/services/...`)
+
+**역설적인 상황**: 픽스처가 의도대로 작동했다는 증거(=실제 secret처럼 보임)인데, 너무 잘 작동해서 GitHub의 자체 scanner도 잡아버린 것.
+
+해결 (두 단계):
+
+**a) 픽스처 수정** — service-specific prefix 제거, semgrep `generic-api-key` 패턴으로 대체:
+- ❌ `STRIPE_API_KEY = "sk_live_..."`, `SLACK_WEBHOOK = "https://hooks.slack.com/..."`
+- ✅ `PAYMENT_GATEWAY_API_KEY`, `THIRD_PARTY_API_TOKEN`, `INTERNAL_WEBHOOK_SECRET` 등 generic 변수명 + 가짜 값
+- 변수명만으로도 semgrep p/secrets의 generic 룰이 발동하므로 탐지 의도 보존
+- docstring에 금지 패턴 명시 (`sk_live_*`, Slack webhook URL) — 재발 방지
+
+**b) 히스토리 정리** — fix를 별도 커밋(`ace81c6`)으로 쌓았다가 *원본 커밋(`8e9c849`)에 secret이 그대로 남아있어* 재차 거부됨. GitHub는 push되는 *모든 커밋*을 스캔하기 때문.
+```powershell
+git reset --soft HEAD~2      # 두 커밋을 staging으로 되돌림 (작업물 보존)
+git commit -m "test: Phase 0 ..."   # 단일 깨끗한 커밋으로 재구성
+git push                     # 성공 (커밋 70be3f0)
+```
+
+**교훈**: secret 패턴 실수했을 때 fix를 위 커밋으로 쌓지 말 것. `amend` 또는 `soft reset + 재커밋`으로 원본 커밋 자체를 갈아치워야 함.
+
+### 차단 2: PR 생성 불가 (unrelated histories)
+
+증상: tst → main PR 만들려 했더니 GitHub UI가 비교 불가 상태.
+
+원인: GitHub 리포 생성 시 자동 추가된 `724d927 Initial commit (LICENSE만)`이 origin/main의 유일한 커밋. 로컬 작업은 그와 무관하게 `f9e68af`부터 시작한 별개 히스토리. 두 갈래 사이 공통 조상이 없음.
+
+해결: LICENSE 보존하면서 origin/main을 로컬 main으로 force-push.
+```powershell
+git checkout origin/main -- LICENSE              # LICENSE만 로컬에 가져옴
+git commit --only LICENSE -m "chore: ..."        # LICENSE 단독 커밋 (ccba503)
+git push origin main --force                      # origin/main 덮어쓰기
+```
+
+이제 main과 tst가 `5ee0c45`를 공통 조상으로 공유 → PR diff는 `70be3f0` 한 커밋만 깨끗하게 노출.
+
+**왜 LICENSE는 main에 직접 푸시했나**: tst 브랜치는 Phase 0 작업 전용. LICENSE는 인프라성 fix라 거기 섞으면 PR diff에 무관한 변경이 들어감. main에 직접 두는 게 의미상 정확. (엄격한 GitFlow였다면 별도 `chore/license` 브랜치 + PR로 처리.)
+
+### 최종 상태
+
+```
+origin/main:                 ccba503 (chore: LICENSE)
+                             d805431 (.idea 사용자 커밋)
+                             5ee0c45 ← 공통 조상
+                             8984f41
+                             f9e68af
+
+origin/tst/Github-issue-1:   70be3f0 (Phase 0, 26 files, 2050 insertions)
+                             5ee0c45 ← 공통 조상
+                             ...
+```
+
+- ✅ PR 생성 가능 (https://github.com/hyckju/dev-sec-ops-pipeline/compare/main...tst/Github-issue-1)
+- ✅ working tree clean, `tst/Github-issue-1` 체크아웃 상태
+
 ---
 
 ## 의사결정 대기 항목 (Phase 1 진입 전 정리 필요)
@@ -175,6 +254,17 @@ rm -rf backend/.venv/Lib/site-packages/app
 ### `tests/integration/github/test_action_contract.py`
 
 Phase 2 (GitHub Actions 워크플로)와 함께 작성. 지금은 인터페이스 미정이라 보류.
+
+### `.idea/` gitignore 정리
+
+`.idea/workspace.xml`은 IDE 실행 중 계속 바뀌어 브랜치 전환마다 동일 차단 재발 가능 (트러블슈팅 §4 참조).
+
+옵션:
+- **A. `.idea/workspace.xml`만 ignore** — 기존 추적된 다른 `.idea/*.xml`은 유지
+- **B. `.idea/` 전체 ignore + `!.idea/.gitignore` 예외** — JetBrains 권장 패턴, 가장 깔끔
+- **C. 그냥 두기** — 매번 discard로 처리
+
+이미 push된 `.idea/*` 파일들을 어떻게 할지(`git rm --cached`로 추적 해제할지)도 함께 결정 필요.
 
 ---
 
