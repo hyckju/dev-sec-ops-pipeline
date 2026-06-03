@@ -1,17 +1,17 @@
-# Phase 2 — GitHub Actions 워크플로 (구현 설계)
+# Phase 3 — GitHub Actions 워크플로 (구현 설계)
 
 작성: 2026-06-02
-관련 문서: [`phase-1-cicd-interface.md`](./phase-1-cicd-interface.md), [`progress-and-roadmap.md`](./progress-and-roadmap.md)
+관련 문서: [`phase-2-cicd-interface.md`](./phase-2-cicd-interface.md), [`progress-and-roadmap.md`](./progress-and-roadmap.md)
 상태: **코드 작업 완료** — 계약 테스트(7건) + 두 워크플로 작성·`actionlint` 통과(2026-06-03). 차단 정책은 `SECSCAN_ENFORCE` 변수 게이트로 자리 마련(정책 택1만 11월 실측 후). 잔여는 순수 환경 작업(시크릿 등록·ngrok·WebGoat 라이브 검증).
 
 ---
 
 ## 목적
 
-Phase 1에서 만든 인터페이스(`POST /pipelines`, `GET /{id}/status`, `GET /{id}` 의 `summary`)를
+Phase 2에서 만든 인터페이스(`POST /pipelines`, `GET /{id}/status`, `GET /{id}` 의 `summary`)를
 **실제 GitHub Actions에서 소비**한다. 두 개의 분리된 워크플로로 구성:
 
-1. **`docker-publish.yml`** (이 리포) — Phase 1.5 결정(DockerHub) 구현. 백엔드 이미지 build → push.
+1. **`docker-publish.yml`** (이 리포) — Phase 2.5 결정(DockerHub) 구현. 백엔드 이미지 build → push.
 2. **`secscan.yml`** (스캔 대상 리포에 배치) — PR 이벤트 → 백엔드 호출 → 폴링 → PR 코멘트.
 
 이 둘은 **독립적**이다. ①은 "백엔드를 어디에 둘 이미지로 만드나", ②는 "그 백엔드를 어떻게 호출하나".
@@ -20,7 +20,7 @@ Phase 1에서 만든 인터페이스(`POST /pipelines`, `GET /{id}/status`, `GET
 
 ## 전제 — 워크플로가 의존하는 API 계약
 
-Phase 1에서 고정한 계약. 모든 경로 프리픽스는 `/api/v1/pipelines`. 인증은 `X-API-Key` 헤더
+Phase 2에서 고정한 계약. 모든 경로 프리픽스는 `/api/v1/pipelines`. 인증은 `X-API-Key` 헤더
 (`settings.API_KEY` 설정 시 강제, 미설정 시 통과).
 
 | 호출 | 메서드 | 응답에서 쓰는 필드 |
@@ -35,7 +35,7 @@ Phase 1에서 고정한 계약. 모든 경로 프리픽스는 `/api/v1/pipelines
 
 ---
 
-## 2.0 `docker-publish.yml` — 이미지 build & push (1.5 구현)
+## 3.0 `docker-publish.yml` — 이미지 build & push (2.5 구현)
 
 **위치**: 이 리포 `.github/workflows/docker-publish.yml`
 **트리거**: `main` push + 태그(`v*`) + 수동(`workflow_dispatch`). `backend/**` 변경 시에만.
@@ -81,14 +81,14 @@ jobs:
 ```
 
 **구현 메모**
-- `context: ./backend` — Dockerfile이 `backend/`에 있고 `.dockerignore`가 venv를 제외(1.2).
+- `context: ./backend` — Dockerfile이 `backend/`에 있고 `.dockerignore`가 venv를 제외(2.2).
 - 런타임 호스트 미정이라 **여기서는 deploy 안 함**. 호스트 확정 후 별 잡(SSH `docker pull && run`,
   또는 watchtower/webhook)으로 이어붙인다.
 - 이미지 이름 `devsecops-backend`는 예시. DockerHub 리포명 확정 시 교체.
 
 ---
 
-## 2.1 `secscan.yml` — 스캔 호출 워크플로 (2.1)
+## 3.1 `secscan.yml` — 스캔 호출 워크플로 (3.1)
 
 **위치**: 스캔 대상 리포 `.github/workflows/secscan.yml` (이 리포가 아님 — 사용자 프로젝트에 배포).
 **트리거**: `pull_request` (+ 수동). 3단계: **trigger → poll → comment**.
@@ -102,7 +102,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  pull-requests: write   # 2.2 PR 코멘트용
+  pull-requests: write   # 3.2 PR 코멘트용
   contents: read
 
 jobs:
@@ -176,20 +176,20 @@ jobs:
 - `jq`는 ubuntu-latest 러너에 기본 설치됨.
 - 폴링 타임아웃 30분은 가정값. 실측(11월) 후 조정.
 - `github.repository`는 `owner/repo` → 전체 URL은 `github.server_url`과 합성.
-- **프라이빗 리포** 스캔 시 백엔드 clone에 토큰 필요 → Phase 3 이후 과제(지금은 공개 리포 가정).
+- **프라이빗 리포** 스캔 시 백엔드 clone에 토큰 필요 → Phase 4 이후 과제(지금은 공개 리포 가정).
 
 ---
 
-## 2.2 PR 코멘트 (2.2)
+## 3.2 PR 코멘트 (3.2)
 
 위 `secscan.yml`의 마지막 step에 통합(`actions/github-script@v7`). 별도 워크플로 아님.
-- `summary`(1.4)로 severity 표 작성. `permissions: pull-requests: write` 필수.
+- `summary`(2.4)로 severity 표 작성. `permissions: pull-requests: write` 필수.
 - **중복 코멘트 정리**(선택): 매 push마다 새 코멘트 대신, 봇 코멘트를 찾아 `updateComment`로 갱신.
   1차 구현은 단순 `createComment`, 노이즈 보이면 업데이트 방식으로 개선.
 
 ---
 
-## 2.3 차단 정책 (2.3) — **지금은 리포팅만**
+## 3.3 차단 정책 (3.3) — **지금은 리포팅만**
 
 로드맵 §4.2 미결(11월 실증 후 결정). **현재는 워크플로를 fail시키지 않는다.**
 - `poll` step의 `success/failed`는 "파이프라인 실행 결과"이지 "차단 판정"이 아님 → comment까지 돌고 green.
@@ -209,18 +209,18 @@ jobs:
 
 ---
 
-## 2.4 검증 (2.4)
+## 3.4 검증 (3.4)
 
 - **로컬 dry-run**: `actionlint`로 YAML 린트, `act`(nektos/act)로 secscan 로컬 실행.
 - **WebGoat 등 의도적 취약 리포**로 1라운드:
   - 백엔드를 ngrok으로 노출(런타임 호스트 미정이므로 1차는 ngrok) → secscan.yml을 fork에 배치 → PR 생성 → 코멘트 확인.
-  - Phase 0 골든 픽스처 6 CWE가 실제로 summary에 잡히는지 교차 확인.
+  - Phase 1 골든 픽스처 6 CWE가 실제로 summary에 잡히는지 교차 확인.
 
 ---
 
 ## 계약 테스트 — `tests/integration/github/test_action_contract.py`
 
-Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phase 0에서 보류했던 것).
+Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phase 1에서 보류했던 것).
 백엔드 리팩터가 필드명을 바꾸면 Action보다 먼저 테스트가 깨지게 한다.
 
 검증 대상(필드 존재 + 타입):
@@ -267,8 +267,8 @@ Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phas
 
 ## 미결정 / 리스크
 
-- **런타임 호스트 미정** — DockerHub는 레지스트리. 실제 run 위치(ngrok→EC2/Oracle/학교 서버)는 1.5 잔여.
+- **런타임 호스트 미정** — DockerHub는 레지스트리. 실제 run 위치(ngrok→EC2/Oracle/학교 서버)는 2.5 잔여.
 - **차단 정책** — §4.2, 11월 실증 후.
 - **프라이빗 리포 clone** — 백엔드가 대상 리포를 clone하므로 비공개면 토큰 전달 설계 필요(현재 공개 가정).
 - **ngrok URL 변동** — 무료 ngrok은 URL이 매번 바뀜 → `SECSCAN_BACKEND_URL` 갱신 필요. 영구 배포 시 해소.
-- **폴링 부하** — 30초 간격은 가정. status 엔드포인트는 카운트만 하도록 이미 경량화(1.3).
+- **폴링 부하** — 30초 간격은 가정. status 엔드포인트는 카운트만 하도록 이미 경량화(2.3).

@@ -1,4 +1,4 @@
-# Phase 0 — 테스트 토대 완료 (작업 일지)
+# Phase 1 — 테스트 토대 완료 (작업 일지)
 
 작성: 2026-05-31 (Git/PR 준비 섹션 추가)
 작업 기간: 2026-05-28 ~ 2026-05-31
@@ -9,7 +9,7 @@
 
 ## 목적 (왜 이 작업을 했는가)
 
-CI/CD 통합(Phase 1~2)에 들어가기 전, **외부에서 호출할 API 계약**과 **보안 엔진 정확도**를 회귀로부터 보호하는 안전망을 만드는 게 목적.
+CI/CD 통합(Phase 2~3)에 들어가기 전, **외부에서 호출할 API 계약**과 **보안 엔진 정확도**를 회귀로부터 보호하는 안전망을 만드는 게 목적.
 신청서 10월 GitHub Actions 통합, 11월 기업 실증 단계에서 이 안전망이 없으면 변경할 때마다 손으로 확인해야 함.
 
 ---
@@ -66,7 +66,7 @@ cd backend
 
 ### `tests/unit/services/test_pipeline_runner.py` (13 tests, 본 세션 신규)
 
-**핵심 의도** (로드맵 §3 Phase 0):
+**핵심 의도** (로드맵 §3 Phase 1):
 - clone 실패 → 즉시 중단
 - install/test 실패해도 scan까지 진행
 - finalize 호출 보장
@@ -205,7 +205,7 @@ git push origin main --force                      # origin/main 덮어쓰기
 
 이제 main과 tst가 `5ee0c45`를 공통 조상으로 공유 → PR diff는 `70be3f0` 한 커밋만 깨끗하게 노출.
 
-**왜 LICENSE는 main에 직접 푸시했나**: tst 브랜치는 Phase 0 작업 전용. LICENSE는 인프라성 fix라 거기 섞으면 PR diff에 무관한 변경이 들어감. main에 직접 두는 게 의미상 정확. (엄격한 GitFlow였다면 별도 `chore/license` 브랜치 + PR로 처리.)
+**왜 LICENSE는 main에 직접 푸시했나**: tst 브랜치는 Phase 1 작업 전용. LICENSE는 인프라성 fix라 거기 섞으면 PR diff에 무관한 변경이 들어감. main에 직접 두는 게 의미상 정확. (엄격한 GitFlow였다면 별도 `chore/license` 브랜치 + PR로 처리.)
 
 ### 최종 상태
 
@@ -216,7 +216,7 @@ origin/main:                 ccba503 (chore: LICENSE)
                              8984f41
                              f9e68af
 
-origin/tst/Github-issue-1:   70be3f0 (Phase 0, 26 files, 2050 insertions)
+origin/tst/Github-issue-1:   70be3f0 (Phase 1, 26 files, 2050 insertions)
                              5ee0c45 ← 공통 조상
                              ...
 ```
@@ -226,7 +226,7 @@ origin/tst/Github-issue-1:   70be3f0 (Phase 0, 26 files, 2050 insertions)
 
 ---
 
-## 의사결정 대기 항목 (Phase 1 진입 전 정리 필요)
+## 의사결정 대기 항목 (Phase 2 진입 전 정리 필요)
 
 ### main.py — `SecurityScanException` 처리
 
@@ -238,14 +238,14 @@ origin/tst/Github-issue-1:   70be3f0 (Phase 0, 26 files, 2050 insertions)
 세 갈래:
 - **A**. handler 추가 (502 Bad Gateway? 503? semgrep registry 장애를 어떻게 표현할지)
 - **B**. import만 제거 (당분간 사용 안 할 거면)
-- **C**. `security_scan_step.py` / `semgrep_service.py`에서 `RuntimeError` 대신 raise — Phase 1 작업 자연스럽게 묶어서
+- **C**. `security_scan_step.py` / `semgrep_service.py`에서 `RuntimeError` 대신 raise — Phase 2 작업 자연스럽게 묶어서
 
-현재 동작에는 무해. Phase 1 들어갈 때 C와 묶어 처리하는 게 자연스러움.
+현재 동작에는 무해. Phase 2 들어갈 때 C와 묶어 처리하는 게 자연스러움.
 
 ### 4.1 백엔드 배포 위치 (로드맵 §4.1)
 
 - ngrok / EC2 / Oracle Cloud / 학교 서버
-- 권장: Phase 1.1~1.4 코드 작업은 즉시 시작 + ngrok으로 1차 검증 → 8~9월에 영구 배포 전환
+- 권장: Phase 2.1~2.4 코드 작업은 즉시 시작 + ngrok으로 1차 검증 → 8~9월에 영구 배포 전환
 
 ### 4.2 차단 정책 (로드맵 §4.2)
 
@@ -253,7 +253,7 @@ origin/tst/Github-issue-1:   70be3f0 (Phase 0, 26 files, 2050 insertions)
 
 ### `tests/integration/github/test_action_contract.py`
 
-Phase 2 (GitHub Actions 워크플로)와 함께 작성. 지금은 인터페이스 미정이라 보류.
+Phase 3 (GitHub Actions 워크플로)와 함께 작성. 지금은 인터페이스 미정이라 보류.
 
 ### `.idea/` gitignore 정리
 
@@ -283,14 +283,14 @@ $env:RUN_SEMGREP_GOLDEN="1"                  # opt-in 강제 실행
 
 ---
 
-## 다음 작업 (Phase 1 진입)
+## 다음 작업 (Phase 2 진입)
 
 | # | 작업 | 차단 요소 |
 |---|---|---|
-| 1.1 | API 키 인증 (`app/api/deps.py`에 `verify_api_key`) | 없음 |
-| 1.2 | `backend/Dockerfile` 작성 | 없음 |
-| 1.3 | `GET /api/v1/pipelines/{id}/status` 가벼운 폴링 엔드포인트 | 없음 |
-| 1.4 | `PipelineDetailResponse.summary` 필드 추가 | 없음 |
-| 1.5 | 백엔드 배포 위치 결정 | **4.1 의사결정 대기** |
+| 2.1 | API 키 인증 (`app/api/deps.py`에 `verify_api_key`) | 없음 |
+| 2.2 | `backend/Dockerfile` 작성 | 없음 |
+| 2.3 | `GET /api/v1/pipelines/{id}/status` 가벼운 폴링 엔드포인트 | 없음 |
+| 2.4 | `PipelineDetailResponse.summary` 필드 추가 | 없음 |
+| 2.5 | 백엔드 배포 위치 결정 | **4.1 의사결정 대기** |
 
-1.1~1.4는 코드만 작성하면 됨. 1.5만 결정 필요. 1.5 결정 전이라도 1.1~1.4 진행 가능.
+2.1~2.4는 코드만 작성하면 됨. 2.5만 결정 필요. 2.5 결정 전이라도 2.1~2.4 진행 가능.

@@ -1,4 +1,4 @@
-# 백엔드 이미지를 DockerHub에 build & push (Phase 1.5 결정 구현).
+# 백엔드 이미지를 DockerHub에 build & push (Phase 2.5 결정 구현).
 # 런타임 호스트는 미정 — 여기서는 레지스트리 publish까지만 한다.
 # 실제 run(deploy)은 호스트 확정 후 별도 잡(SSH docker pull && run / watchtower)으로 이어붙인다.
 name: Publish backend image

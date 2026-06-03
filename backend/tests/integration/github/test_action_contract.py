@@ -1,9 +1,9 @@
 """GitHub Action 계약(contract) 스냅샷 테스트.
 
-`secscan.yml`(Phase 2)이 curl/jq로 파싱하는 **응답 필드 스키마**를 고정한다.
+`secscan.yml`(Phase 3)이 curl/jq로 파싱하는 **응답 필드 스키마**를 고정한다.
 백엔드 리팩터가 필드명/타입/존재 여부를 바꾸면 Action보다 **먼저** 이 테스트가 깨지도록 한다.
 
-대상 계약(설계 문서 phase-2-github-actions.md "전제 — API 계약" 표):
+대상 계약(설계 문서 phase-3-github-actions.md "전제 — API 계약" 표):
 
 | 호출 | 메서드 | Action이 jq로 읽는 필드 |
 |---|---|---|

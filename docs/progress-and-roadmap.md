@@ -1,10 +1,10 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-06-03
+마지막 업데이트: 2026-06-04
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
-- Phase 0 완료 보고서 (테스트 토대): [`phase-0-test-foundation.md`](./phase-0-test-foundation.md)
+- Phase 1 완료 보고서 (테스트 토대): [`phase-1-test-foundation.md`](./phase-1-test-foundation.md)
 - 일정 원본: `../2026학년도 C-리빙랩 프로젝트 참여신청서 .hwpx`
 
 ---
@@ -13,9 +13,9 @@
 
 백엔드 보안 스캔 엔진(6단계 파이프라인 + Semgrep + NVD + AI 후처리)은 **선행 구현 완료**.
 현재는 외부 CI/CD(GitHub Actions 등)에서 호출 가능한 형태로 다듬는 **준비 단계**.
-Phase 0(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환경 충족 시 109 전체).
-Phase 1(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(1.1~1.4) + 신규 코드 테스트 11건 + 1.5 배포 위치 결정(DockerHub 레지스트리).
-Phase 2(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
+Phase 1(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환경 충족 시 109 전체).
+Phase 2(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(2.1~2.4) + 신규 코드 테스트 11건 + 2.5 배포 위치 결정(DockerHub 레지스트리).
+Phase 3(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
 
 ---
 
@@ -37,7 +37,7 @@ Phase 2(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `do
 
 ## 3. Phase 별 진행 상황 (CI/CD 통합 작업 흐름)
 
-### Phase 0 — 테스트 토대 (진행 중)
+### Phase 1 — 테스트 토대 (진행 중)
 
 CI/CD 통합 전제 조건. *외부에서 호출할 API 계약*과 *보안 엔진 정확도*를 회귀로부터 보호한다.
 
@@ -67,40 +67,40 @@ cd backend
 
 | 우선순위 | 파일 (예정) | 검증 영역 | 의의 |
 |---|---|---|---|
-| ~~중~~ ✅ | `tests/integration/github/test_action_contract.py` | GitHub Action이 의존할 응답 필드 스키마 snapshot | **완료 (2026-06-02, 7건)** — Phase 2와 함께 작성 |
+| ~~중~~ ✅ | `tests/integration/github/test_action_contract.py` | GitHub Action이 의존할 응답 필드 스키마 snapshot | **완료 (2026-06-02, 7건)** — Phase 3와 함께 작성 |
 | 하 | semgrep 바이너리를 dev 의존성에 추가 (`requirements-dev.txt` 신설 또는 `pyproject.toml` optional group) | `test_cwe_scan_golden.py`의 8 skipped 테스트 활성화 — 룰팩 회귀 즉시 감지 |
 
 ---
 
-### Phase 1 — CI/CD 인터페이스 ✅ 완료 (2026-06-01)
+### Phase 2 — CI/CD 인터페이스 ✅ 완료 (2026-06-01)
 
-외부에서 호출 가능한 형태로 백엔드를 다듬는다. Phase 0의 API 계약 테스트가 *회귀 안전망* 역할.
+외부에서 호출 가능한 형태로 백엔드를 다듬는다. Phase 1의 API 계약 테스트가 *회귀 안전망* 역할.
 
-작업 일지: [`phase-1-cicd-interface.md`](./phase-1-cicd-interface.md)
+작업 일지: [`phase-2-cicd-interface.md`](./phase-2-cicd-interface.md)
 
 | # | 작업 | 위치 | 상태 |
 |---|---|---|---|
-| 1.1 | API 키 인증 추가 | `app/api/deps.py`의 `verify_api_key` 의존성, `pipelines.py` 라우터에 적용 | ✅ 완료 (키 미설정 시 비활성) |
-| 1.2 | Dockerfile 작성 | `backend/Dockerfile` + `backend/.dockerignore` | ✅ 완료 |
-| 1.3 | 가벼운 상태 폴링 엔드포인트 | `GET /api/v1/pipelines/{id}/status` — status + 진행 단계 + vuln 카운트만 반환 (전체 vulnerabilities 직렬화 X) | ✅ 완료 |
-| 1.4 | summary 필드 추가 | `PipelineDetailResponse.summary: {critical, high, medium, low, info, kev_count}` — PR 코멘트 작성용 | ✅ 완료 |
-| 1.5 | 백엔드 배포 위치 결정 | 이미지 레지스트리 **DockerHub** 확정 (publish는 Phase 2 GitHub Actions 자동화) | ✅ 완료 — 런타임 호스트는 미정(4.1) |
+| 2.1 | API 키 인증 추가 | `app/api/deps.py`의 `verify_api_key` 의존성, `pipelines.py` 라우터에 적용 | ✅ 완료 (키 미설정 시 비활성) |
+| 2.2 | Dockerfile 작성 | `backend/Dockerfile` + `backend/.dockerignore` | ✅ 완료 |
+| 2.3 | 가벼운 상태 폴링 엔드포인트 | `GET /api/v1/pipelines/{id}/status` — status + 진행 단계 + vuln 카운트만 반환 (전체 vulnerabilities 직렬화 X) | ✅ 완료 |
+| 2.4 | summary 필드 추가 | `PipelineDetailResponse.summary: {critical, high, medium, low, info, kev_count}` — PR 코멘트 작성용 | ✅ 완료 |
+| 2.5 | 백엔드 배포 위치 결정 | 이미지 레지스트리 **DockerHub** 확정 (publish는 Phase 3 GitHub Actions 자동화) | ✅ 완료 — 런타임 호스트는 미정(4.1) |
 
-> 신규 코드(인증/status/summary) 테스트 11건 추가 완료 (94 passed + 8 skipped). `SecurityScanException` 정리는 보류 유지(Phase 2 차단 정책 때). docker/DB 수동 스모크는 환경 준비 시 실행.
+> 신규 코드(인증/status/summary) 테스트 11건 추가 완료 (94 passed + 8 skipped). `SecurityScanException` 정리는 보류 유지(Phase 3 차단 정책 때). docker/DB 수동 스모크는 환경 준비 시 실행.
 
 ---
 
-### Phase 2 — GitHub Actions 워크플로 ⏳ 코드 작업 완료 (2026-06-02)
+### Phase 3 — GitHub Actions 워크플로 ⏳ 코드 작업 완료 (2026-06-02)
 
-구현 설계: [`phase-2-github-actions.md`](./phase-2-github-actions.md) — 워크플로 YAML, 시크릿, 구현 순서, 계약 테스트 정리.
+구현 설계: [`phase-3-github-actions.md`](./phase-3-github-actions.md) — 워크플로 YAML, 시크릿, 구현 순서, 계약 테스트 정리.
 
 | # | 작업 | 위치 | 상태 |
 |---|---|---|---|
-| 2.0 | `docker-publish.yml` (이미지 build & push) | `.github/workflows/docker-publish.yml` | ✅ 작성 완료 (시크릿 등록·publish는 환경 작업) |
-| 2.1 | `secscan.yml` (대상 리포 배포 템플릿) | `docs/templates/secscan.yml` | ✅ 작성 완료 (trigger → poll → comment) |
-| 2.2 | PR 코멘트 회신 | `secscan.yml` 마지막 step (`github-script@v7`, 마커로 중복 코멘트 갱신) | ✅ 작성 완료 |
-| 2.3 | 차단 정책 분기 | `secscan.yml`에 `SECSCAN_ENFORCE` 변수 게이트 | ✅ 자리표시 완료 (정책 택1은 4.2, 11월 실측 후) |
-| 2.4 | 테스트 리포 1라운드 검증 | `actionlint` 린트 통과 / WebGoat 라이브 검증 | 🟡 린트 ✅ · 라이브(ngrok+fork PR) ⬜ 환경 작업 |
+| 3.0 | `docker-publish.yml` (이미지 build & push) | `.github/workflows/docker-publish.yml` | ✅ 작성 완료 (시크릿 등록·publish는 환경 작업) |
+| 3.1 | `secscan.yml` (대상 리포 배포 템플릿) | `docs/templates/secscan.yml` | ✅ 작성 완료 (trigger → poll → comment) |
+| 3.2 | PR 코멘트 회신 | `secscan.yml` 마지막 step (`github-script@v7`, 마커로 중복 코멘트 갱신) | ✅ 작성 완료 |
+| 3.3 | 차단 정책 분기 | `secscan.yml`에 `SECSCAN_ENFORCE` 변수 게이트 | ✅ 자리표시 완료 (정책 택1은 4.2, 11월 실측 후) |
+| 3.4 | 테스트 리포 1라운드 검증 | `actionlint` 린트 통과 / WebGoat 라이브 검증 | 🟡 린트 ✅ · 라이브(ngrok+fork PR) ⬜ 환경 작업 |
 | — | 계약 테스트 | `tests/integration/github/test_action_contract.py` | ✅ 7건 통과 |
 
 > `secscan.yml`은 *스캔 대상 리포*에 복사해 쓰는 파일이라 이 리포의 활성 워크플로(`.github/workflows/`)가 아닌 `docs/templates/`에 보관(자기 PR마다 실행되지 않도록). 남은 환경 작업: DockerHub 시크릿 등록 → publish 확인, 백엔드 ngrok 노출 + `API_KEY` 설정, WebGoat fork에 템플릿 배치 후 PR 코멘트 확인.
@@ -109,32 +109,32 @@ cd backend
 
 ---
 
-### Phase 3 — 선택적 분석 강화 (8월 계획, 신청서 핵심 차별점)
+### Phase 4 — 선택적 분석 강화 (8월 계획, 신청서 핵심 차별점)
 
 신청서 "선택적 분석" 정의를 실제 구현으로 채우는 단계.
 
 | # | 작업 | 위치 |
 |---|---|---|
-| 3.1 | `PipelineCreate.changed_files: list[str] \| None` 필드 추가 | `schemas/pipeline.py` |
-| 3.2 | `SecurityScanStep`이 `changed_files`만 스캔하도록 분기 | `security_scan_step.py` 루프에 파일 필터 추가 |
-| 3.3 | Action이 `git diff --name-only origin/${{ github.base_ref }}...HEAD` 결과를 백엔드에 전달 | `secscan.yml` |
-| 3.4 | "선택적 vs 전수" 시간/탐지수 비교 로깅 | 11월 실증 데이터 수집용 |
+| 4.1 | `PipelineCreate.changed_files: list[str] \| None` 필드 추가 | `schemas/pipeline.py` |
+| 4.2 | `SecurityScanStep`이 `changed_files`만 스캔하도록 분기 | `security_scan_step.py` 루프에 파일 필터 추가 |
+| 4.3 | Action이 `git diff --name-only origin/${{ github.base_ref }}...HEAD` 결과를 백엔드에 전달 | `secscan.yml` |
+| 4.4 | "선택적 vs 전수" 시간/탐지수 비교 로깅 | 11월 실증 데이터 수집용 |
 
 ---
 
-### Phase 4 — SARIF 출력 (옵션, 9~10월 계획, 기업 어필용)
+### Phase 5 — SARIF 출력 (옵션, 9~10월 계획, 기업 어필용)
 
 | # | 작업 |
 |---|---|
-| 4.1 | Vulnerability → SARIF v2.1.0 변환기 작성 |
-| 4.2 | `GET /pipelines/{id}/sarif` 엔드포인트 추가 |
-| 4.3 | Action에 `github/codeql-action/upload-sarif@v3` 단계 추가 → GitHub Security 탭에 표시 |
+| 5.1 | Vulnerability → SARIF v2.1.0 변환기 작성 |
+| 5.2 | `GET /pipelines/{id}/sarif` 엔드포인트 추가 |
+| 5.3 | Action에 `github/codeql-action/upload-sarif@v3` 단계 추가 → GitHub Security 탭에 표시 |
 
 ---
 
 ## 4. 의사결정 대기 항목
 
-### 4.1 백엔드 배포 위치 (Phase 1.5 — 레지스트리 결정 완료, 런타임 호스트 미정)
+### 4.1 백엔드 배포 위치 (Phase 2.5 — 레지스트리 결정 완료, 런타임 호스트 미정)
 
 이미지 레지스트리는 **DockerHub로 확정**(이미지 저장/배포). 단, DockerHub는 레지스트리일 뿐이라
 **이미지를 실제로 run할 런타임 호스트는 미정**. 외부 GitHub Action이 호출하려면 인터넷에서 닿는 URL이 필요하다. 후보:
@@ -145,9 +145,9 @@ cd backend
 | AWS EC2 free tier / Oracle Cloud Always Free / 학교 서버 | 안정적, 도메인 부여 가능 | 8~9월부터 |
 | 클라우드에어 인프라 | 기업 환경 본격 적용 | 11월 실증 |
 
-권장 진행: Phase 1.1~1.4 코드 작업은 지금 시작, 배포는 *ngrok으로 1차 검증* → 8~9월에 영구 배포 전환.
+권장 진행: Phase 2.1~2.4 코드 작업은 지금 시작, 배포는 *ngrok으로 1차 검증* → 8~9월에 영구 배포 전환.
 
-### 4.2 차단 정책 (Phase 2.3)
+### 4.2 차단 정책 (Phase 3.3)
 
 신청서는 "취약점 발견 시 자동 차단"을 명시하지만, 어느 심각도부터 차단할지는 *11월 실증에서 false positive 비율을 측정한 다음*에 결정해야 의미가 있다.
 
