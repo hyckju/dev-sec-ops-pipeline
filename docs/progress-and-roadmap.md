@@ -1,6 +1,6 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-06-02
+마지막 업데이트: 2026-06-03
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
@@ -15,7 +15,7 @@
 현재는 외부 CI/CD(GitHub Actions 등)에서 호출 가능한 형태로 다듬는 **준비 단계**.
 Phase 0(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환경 충족 시 109 전체).
 Phase 1(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(1.1~1.4) + 신규 코드 테스트 11건 + 1.5 배포 위치 결정(DockerHub 레지스트리).
-Phase 2(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿. 잔여는 환경 작업(시크릿·ngrok·WebGoat 검증)과 보류(차단 정책).
+Phase 2(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
 
 ---
 
@@ -99,13 +99,13 @@ cd backend
 | 2.0 | `docker-publish.yml` (이미지 build & push) | `.github/workflows/docker-publish.yml` | ✅ 작성 완료 (시크릿 등록·publish는 환경 작업) |
 | 2.1 | `secscan.yml` (대상 리포 배포 템플릿) | `docs/templates/secscan.yml` | ✅ 작성 완료 (trigger → poll → comment) |
 | 2.2 | PR 코멘트 회신 | `secscan.yml` 마지막 step (`github-script@v7`, 마커로 중복 코멘트 갱신) | ✅ 작성 완료 |
-| 2.3 | 차단 정책 분기 | `secscan.yml`에 `if: false` 자리표시 | ⏸ 보류 (정책 4.2, 11월 실측 후) |
-| 2.4 | 테스트 리포 1라운드 검증 | WebGoat 등 의도적 취약 리포 | ⬜ 환경 작업 (ngrok 노출 + fork PR) |
+| 2.3 | 차단 정책 분기 | `secscan.yml`에 `SECSCAN_ENFORCE` 변수 게이트 | ✅ 자리표시 완료 (정책 택1은 4.2, 11월 실측 후) |
+| 2.4 | 테스트 리포 1라운드 검증 | `actionlint` 린트 통과 / WebGoat 라이브 검증 | 🟡 린트 ✅ · 라이브(ngrok+fork PR) ⬜ 환경 작업 |
 | — | 계약 테스트 | `tests/integration/github/test_action_contract.py` | ✅ 7건 통과 |
 
 > `secscan.yml`은 *스캔 대상 리포*에 복사해 쓰는 파일이라 이 리포의 활성 워크플로(`.github/workflows/`)가 아닌 `docs/templates/`에 보관(자기 PR마다 실행되지 않도록). 남은 환경 작업: DockerHub 시크릿 등록 → publish 확인, 백엔드 ngrok 노출 + `API_KEY` 설정, WebGoat fork에 템플릿 배치 후 PR 코멘트 확인.
 
-부수 작업: `actionlint`로 YAML 린트, `act`(nektos/act)로 로컬 dry-run (러너 환경에서).
+부수 작업: `actionlint`로 두 워크플로 YAML 린트 **완료(0 errors, 2026-06-03)**. `act`(nektos/act) 로컬 dry-run은 러너 환경에서.
 
 ---
 

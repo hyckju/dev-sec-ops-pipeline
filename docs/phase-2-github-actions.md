@@ -2,7 +2,7 @@
 
 작성: 2026-06-02
 관련 문서: [`phase-1-cicd-interface.md`](./phase-1-cicd-interface.md), [`progress-and-roadmap.md`](./progress-and-roadmap.md)
-상태: **구현 중** — 계약 테스트 + 두 워크플로 작성 완료(2026-06-02). 잔여는 환경 의존(시크릿 등록·ngrok·WebGoat 검증)과 보류(차단 정책).
+상태: **코드 작업 완료** — 계약 테스트(7건) + 두 워크플로 작성·`actionlint` 통과(2026-06-03). 차단 정책은 `SECSCAN_ENFORCE` 변수 게이트로 자리 마련(정책 택1만 11월 실측 후). 잔여는 순수 환경 작업(시크릿 등록·ngrok·WebGoat 라이브 검증).
 
 ---
 
@@ -193,17 +193,19 @@ jobs:
 
 로드맵 §4.2 미결(11월 실증 후 결정). **현재는 워크플로를 fail시키지 않는다.**
 - `poll` step의 `success/failed`는 "파이프라인 실행 결과"이지 "차단 판정"이 아님 → comment까지 돌고 green.
-- 향후 차단 활성화 지점만 미리 표시:
+- 향후 차단 활성화 지점은 **리포 변수 `SECSCAN_ENFORCE`로 게이트** — 파일 수정 없이 리포 설정만으로 on/off:
 
 ```yaml
       - name: (FUTURE) Enforce policy
-        if: false   # ← 정책 확정 시 활성화
+        if: always() && vars.SECSCAN_ENFORCE == 'true' && hashFiles('detail.json') != ''
         run: |
-          kev=$(jq -r '.summary.kev_count' detail.json)
+          kev=$(jq -r '.summary.kev_count // 0' detail.json)
           if [ "$kev" -gt 0 ]; then echo "::error::KEV $kev건"; exit 1; fi
 ```
 
-후보 정책: KEV만 차단 / Critical+High 차단 / 리포팅만. 11월 false positive 측정 후 택1.
+- 활성화: 대상 리포 Settings → Secrets and variables → Actions → **Variables**에 `SECSCAN_ENFORCE=true` 추가.
+  변수 미설정이면 step이 skip되어 리포팅 모드 유지(actionlint도 통과 — `if: false` 상수식 경고 회피).
+- 후보 정책: KEV만 차단 / Critical+High 차단 / 리포팅만. 11월 false positive 측정 후 택1(위 예시는 KEV 차단).
 
 ---
 
@@ -237,6 +239,7 @@ Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phas
 | 이 리포 | `DOCKERHUB_TOKEN` | DockerHub Read/Write 액세스 토큰 |
 | 대상 리포 | `SECSCAN_BACKEND_URL` | 백엔드 베이스 URL (ngrok/영구) |
 | 대상 리포 | `SECSCAN_API_KEY` | 백엔드 `settings.API_KEY`와 동일 값 |
+| 대상 리포 | `SECSCAN_ENFORCE` (변수, 선택) | `true`면 차단 정책 활성화. 미설정/그 외 = 리포팅 모드 |
 
 ---
 
@@ -247,7 +250,8 @@ Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phas
 3. [ ] 백엔드 ngrok 노출 + `API_KEY` 설정 (1차 런타임) — **환경 작업**
 4. [x] `secscan.yml` 작성 (trigger → poll → comment) → `docs/templates/secscan.yml`(대상 리포 복사용). `act` dry-run은 환경 작업
 5. [ ] WebGoat fork에 배치 → PR로 실제 코멘트 확인 — **환경 작업**
-6. [ ] (보류) 차단 정책 — 11월 실측 후 결정. `secscan.yml`에 `if: false` 자리표시 마련됨
+6. [x] (보류→자리표시 완료) 차단 정책 — `SECSCAN_ENFORCE` 변수 게이트로 마련. 정책 택1은 11월 실측 후
+7. [x] `actionlint`로 두 워크플로 YAML 린트 — **통과(0 errors)**, YAML 파싱 검증도 통과
 
 ### 코드 작업 완료분 (이 리포에 머지됨)
 - `backend/tests/integration/github/test_action_contract.py` — 응답 스키마 snapshot 7건

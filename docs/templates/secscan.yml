@@ -112,8 +112,11 @@ jobs:
 
       # ── (FUTURE) 차단 정책 — 11월 false positive 실측 후 활성화 (로드맵 §4.2) ──
       # 후보: KEV만 차단 / Critical+High 차단 / 리포팅만. 아래는 KEV 차단 예시.
+      # 기본은 비활성(리포팅 모드). 활성화하려면 대상 리포에
+      #   Settings → Secrets and variables → Actions → Variables 에 SECSCAN_ENFORCE=true 추가.
+      # (파일 수정 없이 리포 설정만으로 on/off — 변수 미설정 시 step 자체가 skip)
       - name: (FUTURE) Enforce policy
-        if: false   # ← 정책 확정 시 true 로
+        if: always() && vars.SECSCAN_ENFORCE == 'true' && hashFiles('detail.json') != ''
         run: |
           kev=$(jq -r '.summary.kev_count // 0' detail.json)
           if [ "$kev" -gt 0 ]; then echo "::error::KEV 등재 취약점 ${kev}건 — 차단"; exit 1; fi
