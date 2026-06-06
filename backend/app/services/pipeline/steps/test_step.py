@@ -23,6 +23,8 @@ def _run(cmd: list[str], cwd: str) -> tuple[int, str]:
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_TIMEOUT,
         )
         combined = (result.stdout + result.stderr).strip()
@@ -154,6 +156,8 @@ class TestStep:
             ["php", "-v"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if check.returncode != 0:
             reason = "php not available; skipping test step"
@@ -206,6 +210,8 @@ class TestStep:
             ["python", "-m", "pytest", "--version"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if check.returncode != 0:
             reason = "pytest not available; skipping test step"
