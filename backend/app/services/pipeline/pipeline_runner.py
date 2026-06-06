@@ -3,6 +3,7 @@
 import logging
 import os
 import shutil
+import sys
 import tempfile
 import time
 import uuid
@@ -25,6 +26,15 @@ from app.services.pipeline.step_executor import StepExecutor, StepResult
 from app.services.security.cve_service import CVEService
 
 logger = logging.getLogger(__name__)
+
+# 진행 표시줄은 유니코드 글리프(✓ ✗ ⊘)를 출력한다. 일부 Windows 콘솔(cp949 등)은
+# 이를 인코딩하지 못해 UnicodeEncodeError를 던지는데, 이 출력은 순수 진행 표시이므로
+# 인코딩 실패가 파이프라인 실행을 중단시켜선 안 된다. stdout을 utf-8로 보강한다.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
 console = Console()
 
 _STEP_LABELS = {

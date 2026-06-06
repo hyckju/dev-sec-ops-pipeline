@@ -80,6 +80,8 @@ class CloneStep:
                 ["git", "clone", "--depth", "1", github_url, target_dir],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=300,
             )
         except subprocess.TimeoutExpired as exc:
@@ -116,6 +118,8 @@ class CloneStep:
             ["git", "-C", target_dir, "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if sha_result.returncode == 0:
             commit_sha = sha_result.stdout.strip()
@@ -126,6 +130,8 @@ class CloneStep:
             ["git", "-C", target_dir, "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if branch_result.returncode == 0:
             branch = branch_result.stdout.strip()

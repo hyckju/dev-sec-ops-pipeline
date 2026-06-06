@@ -23,6 +23,8 @@ def _run(cmd: list[str], cwd: str) -> tuple[int, str]:
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_TIMEOUT,
         )
         combined = (result.stdout + result.stderr).strip()
