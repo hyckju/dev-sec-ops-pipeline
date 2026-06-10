@@ -99,7 +99,7 @@ async def test_contract_post_returns_id_and_status(client, monkeypatch):
     fake = _stub_pipeline()
     fake.status = PipelineStatus.PENDING
 
-    async def _fake_create_and_run(self, github_url, db, cwes=None, fields=None):
+    async def _fake_create_and_run(self, github_url, db, cwes=None, fields=None, changed_files=None):
         return fake
 
     monkeypatch.setattr(PipelineService, "create_and_run", _fake_create_and_run)

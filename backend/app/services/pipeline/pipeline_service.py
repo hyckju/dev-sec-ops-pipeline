@@ -41,6 +41,7 @@ class PipelineService:
         db: AsyncSession,
         selected_cwe_ids: list[str] | None = None,
         selected_cve_fields: list[str] | None = None,
+        changed_files: list[str] | None = None,
     ) -> Pipeline:
         """
         프로젝트가 없으면 github_url 기준으로 생성하고,
@@ -90,6 +91,7 @@ class PipelineService:
                         db=bg_db,
                         selected_cwe_ids=selected_cwe_ids or ["CWE-89"],
                         selected_cve_fields=selected_cve_fields,
+                        changed_files=changed_files,
                     )
 
         asyncio.create_task(_run_in_new_session())

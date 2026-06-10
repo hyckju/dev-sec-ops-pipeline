@@ -85,6 +85,7 @@ async def create_pipeline(body: PipelineCreate, db: DbDep):
         db,
         body.selected_cwe_ids,
         [f.value for f in body.selected_cve_fields],
+        changed_files=body.changed_files,
     )
     return pipeline
 

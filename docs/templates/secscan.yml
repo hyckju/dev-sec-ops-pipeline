@@ -11,6 +11,10 @@
 #
 # 동작: PR 이벤트 → 백엔드에 스캔 요청(trigger) → 30초 간격 폴링(poll) → PR 코멘트(comment).
 # 현재는 *리포팅 모드* — 취약점을 찾아도 워크플로를 fail시키지 않는다 (차단 정책은 11월 실증 후 결정).
+#
+# 선택적 분석 (옵션): 대상 리포에 Variables 로 SECSCAN_SELECTIVE=true 를 추가하면
+#   PR의 변경 파일(git diff)만 스캔한다. 미설정 시 전수(full) 스캔(기본).
+#   변경 파일이 0개면 스캔 결과도 0건 — "변경분에 한해 안전" 신호.
 # ──────────────────────────────────────────────────────────────────────────
 name: Security Scan
 
@@ -30,14 +34,40 @@ jobs:
       API: ${{ secrets.SECSCAN_BACKEND_URL }}
       KEY: ${{ secrets.SECSCAN_API_KEY }}
     steps:
+      # 선택적 분석용 — 변경 파일 diff를 구하려면 작업 트리 체크아웃이 필요하다.
+      # (SECSCAN_SELECTIVE 미설정이어도 가벼운 체크아웃이라 무해)
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute changed files (SECSCAN_SELECTIVE=true & PR 일 때만)
+        id: diff
+        run: |
+          set -euo pipefail
+          json='[]'
+          if [ "${{ vars.SECSCAN_SELECTIVE }}" = "true" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}" 2>/dev/null || true
+            files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null || true)
+            json=$(printf '%s' "$files" | jq -R -s -c 'split("\n") | map(select(length>0))')
+          fi
+          echo "changed_json=$json" >> "$GITHUB_OUTPUT"
+          echo "::notice::selective=${{ vars.SECSCAN_SELECTIVE }} changed_files=$json"
+
       - name: Trigger pipeline
         id: trigger
         run: |
           set -euo pipefail
+          repo_url="${{ github.server_url }}/${{ github.repository }}"
+          # changed_files는 비어 있지 않을 때만 포함(빈 배열이면 전수 스캔). jq로 안전하게 직렬화.
+          body=$(jq -n \
+            --arg url "$repo_url" \
+            --argjson files '${{ steps.diff.outputs.changed_json }}' \
+            '{github_url: $url} + (if ($files | length) > 0 then {changed_files: $files} else {} end)')
           resp=$(curl -fsS -X POST "$API/api/v1/pipelines/" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $KEY" \
-            -d "{\"github_url\": \"${{ github.server_url }}/${{ github.repository }}\"}")
+            -d "$body")
           id=$(echo "$resp" | jq -r '.id')
           if [ -z "$id" ] || [ "$id" = "null" ]; then
             echo "::error::파이프라인 생성 실패 — 응답에 id 없음: $resp"; exit 1

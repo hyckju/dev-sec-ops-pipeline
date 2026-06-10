@@ -148,6 +148,8 @@ class StepExecutor:
                 github_url=context.get("github_url", ""),
                 cve_service=context.get("cve_service"),
                 db=context.get("db"),
+                changed_files=context.get("changed_files"),
+                repo_root_path=context.get("repo_root_path", ""),
             )
 
         if step_type == StepType.BUILD:

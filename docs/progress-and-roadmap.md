@@ -1,6 +1,6 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-06-04
+마지막 업데이트: 2026-06-10
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
@@ -16,6 +16,7 @@
 Phase 1(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환경 충족 시 109 전체).
 Phase 2(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(2.1~2.4) + 신규 코드 테스트 11건 + 2.5 배포 위치 결정(DockerHub 레지스트리).
 Phase 3(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
+Phase 4(선택적 분석 강화) **코드 작업 완료** — `changed_files`(PR diff) 사후 필터 + `scan_mode`(selective/full) 비교 로깅, `vars.SECSCAN_SELECTIVE` 게이트, 단위 테스트 11건(전체 112 passed). 잔여는 라이브 selective 실측(11월 4.4 데이터).
 
 ---
 
@@ -109,16 +110,21 @@ cd backend
 
 ---
 
-### Phase 4 — 선택적 분석 강화 (8월 계획, 신청서 핵심 차별점)
+### Phase 4 — 선택적 분석 강화 ✅ 코드 작업 완료 (2026-06-10, 신청서 핵심 차별점)
 
-신청서 "선택적 분석" 정의를 실제 구현으로 채우는 단계.
+구현 설계·완료 보고: [`phase-4-selective-analysis.md`](./phase-4-selective-analysis.md) — 데이터 흐름, 사후 필터 설계, 테스트, 리스크 정리.
 
-| # | 작업 | 위치 |
-|---|---|---|
-| 4.1 | `PipelineCreate.changed_files: list[str] \| None` 필드 추가 | `schemas/pipeline.py` |
-| 4.2 | `SecurityScanStep`이 `changed_files`만 스캔하도록 분기 | `security_scan_step.py` 루프에 파일 필터 추가 |
-| 4.3 | Action이 `git diff --name-only origin/${{ github.base_ref }}...HEAD` 결과를 백엔드에 전달 | `secscan.yml` |
-| 4.4 | "선택적 vs 전수" 시간/탐지수 비교 로깅 | 11월 실증 데이터 수집용 |
+신청서 "선택적 분석" 정의를 실제 구현으로 채우는 단계. 변경 파일(PR diff)만 스캔하는 사후 필터 + 전수/선택 비교 로깅.
+
+| # | 작업 | 위치 | 상태 |
+|---|---|---|---|
+| 4.1 | `PipelineCreate.changed_files: list[str] \| None` 필드 추가 (+ 공백 항목 정규화→None 환원). POST→service→runner→step_executor로 `changed_files`+`repo_root_path` 전파 | `schemas/pipeline.py`, `pipelines.py`, `pipeline_service.py`, `pipeline_runner.py`, `step_executor.py` | ✅ 완료 |
+| 4.2 | `SecurityScanStep`이 `changed_files`만 스캔하도록 분기 — semgrep finding의 file_path(절대경로)를 repo 루트 상대경로로 환원해 변경 집합과 매칭(정규화·AI 전 사전 필터) | `security_scan_step.py` (`_norm_rel`/`_build_changed_set`/`_finding_in_changed` 헬퍼) | ✅ 완료 |
+| 4.3 | Action이 `git diff --name-only origin/${{ github.base_ref }}...HEAD` 결과를 백엔드에 전달 (`vars.SECSCAN_SELECTIVE=true` 게이트, jq로 안전 직렬화) | `docs/templates/secscan.yml` | ✅ 완료 |
+| 4.4 | "선택적 vs 전수" 시간/탐지수 비교 로깅 (`scan_mode`, `findings_before_filter`, elapsed) | `security_scan_step.py` metadata + logger | ✅ 완료 |
+| — | 단위 테스트 11건 (헬퍼 6 + run-level 선택/전수/무매칭 3 + API forward/normalize 2) | `test_security_scan_step_selective.py`, `test_pipelines_api.py` | ✅ 112 passed |
+
+> 동작: `changed_files`가 비어 있으면(None/빈 목록) `scan_mode=full`(기존 전수 스캔, 하위호환). 비어 있지 않으면 `scan_mode=selective` — 변경 파일에 매칭되는 finding만 남긴다(매칭 0개면 0건 = "변경분에 한해 안전"). 잔여 환경 작업: 라이브 PR에서 selective 모드 실측(11월 4.4 데이터 수집).
 
 ---
 
