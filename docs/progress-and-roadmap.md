@@ -1,6 +1,6 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-06-10
+마지막 업데이트: 2026-06-24
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
@@ -17,6 +17,7 @@ Phase 1(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환
 Phase 2(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(2.1~2.4) + 신규 코드 테스트 11건 + 2.5 배포 위치 결정(DockerHub 레지스트리).
 Phase 3(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
 Phase 4(선택적 분석 강화) **코드 작업 완료** — `changed_files`(PR diff) 사후 필터 + `scan_mode`(selective/full) 비교 로깅, `vars.SECSCAN_SELECTIVE` 게이트, 단위 테스트 11건(전체 112 passed). 잔여는 라이브 selective 실측(11월 4.4 데이터).
+중간보고서(산학관주도 캡스톤디자인) **작성 중** — `fill_report.py` HWP COM 자동화 스크립트 작성(2026-06-24). 제출 기한 7/31.
 
 ---
 
@@ -26,7 +27,7 @@ Phase 4(선택적 분석 강화) **코드 작업 완료** — `changed_files`(PR
 |---|---|---|---|
 | 4월 | 기업 요구사항/배포 환경 분석 | 완료 | 3월 초기 커밋으로 백엔드 구조 정립 |
 | **5월** | **시스템 아키텍처 설계** | 부분 완료 | docs는 *구현 기준* 명세. 설계 산출물(다이어그램, 선택적 스캔 정책)은 보강 필요 |
-| 6월 | NVD REST API 연동 + 캐싱 | 선행 완료 | `cve_service.py`, `cve_catalog` 모델 |
+| **6월** | **NVD REST API 연동 + 캐싱** | 선행 완료 + 중간보고서 작성 중 | `cve_service.py`, `cve_catalog` 모델 / `fill_report.py` HWP 자동화(7/31 제출) |
 | 7월 | CWE 기반 분석 + 필터링 | 선행 완료 | `semgrep_service.py`의 6개 CWE 설정 |
 | 8월 | 5종 취약점 탐지 고도화 + 속도 최적화 | 미시작 | 벤치마크 하네스 필요 |
 | 9월 | 중간점검 + LLM 연동 | 선행 완료 | Claude/Gemini 후처리 권고 통합됨 |
