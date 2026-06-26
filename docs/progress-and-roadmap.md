@@ -70,7 +70,7 @@ cd backend
 | 우선순위 | 파일 (예정) | 검증 영역 | 의의 |
 |---|---|---|---|
 | ~~중~~ ✅ | `tests/integration/github/test_action_contract.py` | GitHub Action이 의존할 응답 필드 스키마 snapshot | **완료 (2026-06-02, 7건)** — Phase 3와 함께 작성 |
-| 하 | semgrep 바이너리를 dev 의존성에 추가 (`requirements-dev.txt` 신설 또는 `pyproject.toml` optional group) | `test_cwe_scan_golden.py`의 8 skipped 테스트 활성화 — 룰팩 회귀 즉시 감지 |
+| 하 | `semgrep login` (환경 작업) | `test_cwe_scan_golden.py` 8 skipped 활성화 — 바이너리 탐지는 수정됨(venv 폴백), 룰팩 다운로드에 Semgrep 계정 인증 필요. 11월 실증 전 수행. |
 
 ---
 
@@ -103,6 +103,7 @@ cd backend
 | 3.2 | PR 코멘트 회신 | `secscan.yml` 마지막 step (`github-script@v7`, 마커로 중복 코멘트 갱신) | ✅ 작성 완료 |
 | 3.3 | 차단 정책 분기 | `secscan.yml`에 `SECSCAN_ENFORCE` 변수 게이트 | ✅ 자리표시 완료 (정책 택1은 4.2, 11월 실측 후) |
 | 3.4 | 테스트 리포 1라운드 검증 | `actionlint` 린트 통과 / WebGoat 라이브 검증 | 🟡 린트 ✅ · 라이브(ngrok+fork PR) ⬜ 환경 작업 |
+| 3.5 | **선택적 스캔 CWE 전달** | `secscan.yml`에서 `vars.SECSCAN_CWE_IDS` → `selected_cwe_ids` POST body 포함 | ⬜ 미구현 — 선택적 스캔 CI/CD 핵심 연결고리 |
 | — | 계약 테스트 | `tests/integration/github/test_action_contract.py` | ✅ 7건 통과 |
 
 > `secscan.yml`은 *스캔 대상 리포*에 복사해 쓰는 파일이라 이 리포의 활성 워크플로(`.github/workflows/`)가 아닌 `docs/templates/`에 보관(자기 PR마다 실행되지 않도록). 남은 환경 작업: DockerHub 시크릿 등록 → publish 확인, 백엔드 ngrok 노출 + `API_KEY` 설정, WebGoat fork에 템플릿 배치 후 PR 코멘트 확인.
