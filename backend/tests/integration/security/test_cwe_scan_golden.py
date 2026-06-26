@@ -14,17 +14,17 @@ SemgrepService.run_cwe_scan이 6개 CWE를 모두 탐지하는지 검증한다.
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 import pytest
 
+from app.integrations.semgrep.runner import _resolve_semgrep_executable
 from app.services.security.semgrep_service import CWE_SCAN_CONFIG, SemgrepService
 
-SEMGREP_AVAILABLE = shutil.which("semgrep") is not None
+SEMGREP_AVAILABLE = _resolve_semgrep_executable() is not None
 requires_semgrep = pytest.mark.skipif(
     not SEMGREP_AVAILABLE,
-    reason="semgrep binary not installed — install with `pip install semgrep` to enable",
+    reason="semgrep binary not found — venv PATH 미등록 또는 미설치. SEMGREP_BINARY 환경변수로 경로 지정 가능",
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cwe_golden"

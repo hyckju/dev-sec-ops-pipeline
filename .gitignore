@@ -8,7 +8,8 @@ __pycache__/
 .venv/
 venv/
 
-# VSCode
+# IDE
+.idea/
 .vscode/
 
 # MacOS
@@ -67,3 +68,11 @@ pip-wheel-metadata/
 
 # Ignore OS
 Thumbs.db
+
+# HWP/보고서 파일
+*.hwp
+*.hwpx
+중간보고서_내용.txt
+application*.txt
+application*.hwp
+template_text.txt

@@ -92,7 +92,7 @@ async def test_post_pipeline_returns_202_and_response_shape(client, monkeypatch)
     """정상 요청은 202와 PipelineResponse 스키마를 반환해야 한다 (CI 폴링용 id 필수)."""
     fake = _stub_pipeline()
 
-    async def _fake_create_and_run(self, github_url, db, cwes=None, fields=None):
+    async def _fake_create_and_run(self, github_url, db, cwes=None, fields=None, changed_files=None):
         return fake
 
     monkeypatch.setattr(PipelineService, "create_and_run", _fake_create_and_run)
@@ -117,10 +117,11 @@ async def test_post_pipeline_forwards_selected_cwe_ids(client, monkeypatch):
     """요청의 selected_cwe_ids가 서비스 레이어로 그대로 전달되어야 한다."""
     captured: dict = {}
 
-    async def _capture(self, github_url, db, cwes=None, fields=None):
+    async def _capture(self, github_url, db, cwes=None, fields=None, changed_files=None):
         captured["github_url"] = github_url
         captured["cwes"] = cwes
         captured["fields"] = fields
+        captured["changed_files"] = changed_files
         return _stub_pipeline()
 
     monkeypatch.setattr(PipelineService, "create_and_run", _capture)
@@ -137,6 +138,8 @@ async def test_post_pipeline_forwards_selected_cwe_ids(client, monkeypatch):
     assert captured["github_url"] == "https://github.com/example/repo"
     assert captured["cwes"] == ["CWE-89", "CWE-79"]
     assert captured["fields"] == ["cve_id", "cwe"]
+    # changed_files 미지정 시 None(=전수 스캔)
+    assert captured["changed_files"] is None
 
 
 # ── POST /api/v1/pipelines/ — 검증 실패 (CI 스크립트 작성자가 알아야 할 422) ─
@@ -193,7 +196,7 @@ async def test_post_pipeline_deduplicates_cve_fields(client, monkeypatch):
     """validator가 중복 cve_field를 제거(순서 유지)하여 서비스에 전달해야 한다."""
     captured: dict = {}
 
-    async def _capture(self, github_url, db, cwes=None, fields=None):
+    async def _capture(self, github_url, db, cwes=None, fields=None, changed_files=None):
         captured["fields"] = fields
         return _stub_pipeline()
 
@@ -208,6 +211,48 @@ async def test_post_pipeline_deduplicates_cve_fields(client, monkeypatch):
     )
 
     assert captured["fields"] == ["cve_id", "cwe"]
+
+
+async def test_post_pipeline_forwards_changed_files(client, monkeypatch):
+    """changed_files(선택적 분석)가 서비스 레이어로 그대로 전달되어야 한다."""
+    captured: dict = {}
+
+    async def _capture(self, github_url, db, cwes=None, fields=None, changed_files=None):
+        captured["changed_files"] = changed_files
+        return _stub_pipeline()
+
+    monkeypatch.setattr(PipelineService, "create_and_run", _capture)
+
+    await client.post(
+        "/api/v1/pipelines/",
+        json={
+            "github_url": "https://github.com/example/repo",
+            "changed_files": ["src/app/main.py", "src/app/db.py"],
+        },
+    )
+
+    assert captured["changed_files"] == ["src/app/main.py", "src/app/db.py"]
+
+
+async def test_post_pipeline_normalizes_blank_changed_files_to_none(client, monkeypatch):
+    """공백/빈 문자열만 있는 changed_files는 None(=전수 스캔)으로 환원되어야 한다."""
+    captured: dict = {}
+
+    async def _capture(self, github_url, db, cwes=None, fields=None, changed_files=None):
+        captured["changed_files"] = changed_files
+        return _stub_pipeline()
+
+    monkeypatch.setattr(PipelineService, "create_and_run", _capture)
+
+    await client.post(
+        "/api/v1/pipelines/",
+        json={
+            "github_url": "https://github.com/example/repo",
+            "changed_files": ["", "   "],
+        },
+    )
+
+    assert captured["changed_files"] is None
 
 
 # ── GET /api/v1/pipelines/ — 목록 ──────────────────────────────────────

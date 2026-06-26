@@ -252,11 +252,15 @@ Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phas
 5. [ ] WebGoat fork에 배치 → PR로 실제 코멘트 확인 — **환경 작업**
 6. [x] (보류→자리표시 완료) 차단 정책 — `SECSCAN_ENFORCE` 변수 게이트로 마련. 정책 택1은 11월 실측 후
 7. [x] `actionlint`로 두 워크플로 YAML 린트 — **통과(0 errors)**, YAML 파싱 검증도 통과
+8. [ ] `secscan.yml`: `vars.SECSCAN_CWE_IDS` → `selected_cwe_ids` 파싱 후 POST body에 포함 — **선택적 스캔 CI/CD 핵심 연결고리**
 
 ### 코드 작업 완료분 (이 리포에 머지됨)
 - `backend/tests/integration/github/test_action_contract.py` — 응답 스키마 snapshot 7건
 - `.github/workflows/docker-publish.yml` — 이미지 build & push (활성 워크플로)
 - `docs/templates/secscan.yml` — 스캔 대상 리포에 복사할 템플릿 (이 리포에서 실행되지 않게 templates/에 보관)
+
+### 남은 코드 작업
+- `docs/templates/secscan.yml`: `vars.SECSCAN_CWE_IDS`(쉼표 구분 문자열) 파싱 → `selected_cwe_ids` 배열로 변환 후 POST body 포함. 미설정 시 key 생략(백엔드 기본값 6개로 폴백 — 하위 호환). 이 연결고리가 없으면 사용자가 CWE를 선택해도 CI/CD에서 전수 스캔과 동일하게 동작한다.
 
 ### 남은 환경 작업 (코드 외)
 - DockerHub: `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` 시크릿 등록 → main push로 1회 publish 확인

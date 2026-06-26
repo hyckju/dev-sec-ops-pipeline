@@ -1,6 +1,6 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-06-04
+마지막 업데이트: 2026-06-24
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
@@ -16,6 +16,8 @@
 Phase 1(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환경 충족 시 109 전체).
 Phase 2(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(2.1~2.4) + 신규 코드 테스트 11건 + 2.5 배포 위치 결정(DockerHub 레지스트리).
 Phase 3(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
+Phase 4(선택적 분석 강화) **코드 작업 완료** — `changed_files`(PR diff) 사후 필터 + `scan_mode`(selective/full) 비교 로깅, `vars.SECSCAN_SELECTIVE` 게이트, 단위 테스트 11건(전체 112 passed). 잔여는 라이브 selective 실측(11월 4.4 데이터).
+중간보고서(산학관주도 캡스톤디자인) **작성 중** — `fill_report.py` HWP COM 자동화 스크립트 작성(2026-06-24). 제출 기한 7/31.
 
 ---
 
@@ -25,7 +27,7 @@ Phase 3(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `do
 |---|---|---|---|
 | 4월 | 기업 요구사항/배포 환경 분석 | 완료 | 3월 초기 커밋으로 백엔드 구조 정립 |
 | **5월** | **시스템 아키텍처 설계** | 부분 완료 | docs는 *구현 기준* 명세. 설계 산출물(다이어그램, 선택적 스캔 정책)은 보강 필요 |
-| 6월 | NVD REST API 연동 + 캐싱 | 선행 완료 | `cve_service.py`, `cve_catalog` 모델 |
+| **6월** | **NVD REST API 연동 + 캐싱** | 선행 완료 + 중간보고서 작성 중 | `cve_service.py`, `cve_catalog` 모델 / `fill_report.py` HWP 자동화(7/31 제출) |
 | 7월 | CWE 기반 분석 + 필터링 | 선행 완료 | `semgrep_service.py`의 6개 CWE 설정 |
 | 8월 | 5종 취약점 탐지 고도화 + 속도 최적화 | 미시작 | 벤치마크 하네스 필요 |
 | 9월 | 중간점검 + LLM 연동 | 선행 완료 | Claude/Gemini 후처리 권고 통합됨 |
@@ -68,7 +70,7 @@ cd backend
 | 우선순위 | 파일 (예정) | 검증 영역 | 의의 |
 |---|---|---|---|
 | ~~중~~ ✅ | `tests/integration/github/test_action_contract.py` | GitHub Action이 의존할 응답 필드 스키마 snapshot | **완료 (2026-06-02, 7건)** — Phase 3와 함께 작성 |
-| 하 | semgrep 바이너리를 dev 의존성에 추가 (`requirements-dev.txt` 신설 또는 `pyproject.toml` optional group) | `test_cwe_scan_golden.py`의 8 skipped 테스트 활성화 — 룰팩 회귀 즉시 감지 |
+| 하 | `semgrep login` (환경 작업) | `test_cwe_scan_golden.py` 8 skipped 활성화 — 바이너리 탐지는 수정됨(venv 폴백), 룰팩 다운로드에 Semgrep 계정 인증 필요. 11월 실증 전 수행. |
 
 ---
 
@@ -101,6 +103,7 @@ cd backend
 | 3.2 | PR 코멘트 회신 | `secscan.yml` 마지막 step (`github-script@v7`, 마커로 중복 코멘트 갱신) | ✅ 작성 완료 |
 | 3.3 | 차단 정책 분기 | `secscan.yml`에 `SECSCAN_ENFORCE` 변수 게이트 | ✅ 자리표시 완료 (정책 택1은 4.2, 11월 실측 후) |
 | 3.4 | 테스트 리포 1라운드 검증 | `actionlint` 린트 통과 / WebGoat 라이브 검증 | 🟡 린트 ✅ · 라이브(ngrok+fork PR) ⬜ 환경 작업 |
+| 3.5 | **선택적 스캔 CWE 전달** | `secscan.yml`에서 `vars.SECSCAN_CWE_IDS` → `selected_cwe_ids` POST body 포함 | ⬜ 미구현 — 선택적 스캔 CI/CD 핵심 연결고리 |
 | — | 계약 테스트 | `tests/integration/github/test_action_contract.py` | ✅ 7건 통과 |
 
 > `secscan.yml`은 *스캔 대상 리포*에 복사해 쓰는 파일이라 이 리포의 활성 워크플로(`.github/workflows/`)가 아닌 `docs/templates/`에 보관(자기 PR마다 실행되지 않도록). 남은 환경 작업: DockerHub 시크릿 등록 → publish 확인, 백엔드 ngrok 노출 + `API_KEY` 설정, WebGoat fork에 템플릿 배치 후 PR 코멘트 확인.
@@ -109,16 +112,21 @@ cd backend
 
 ---
 
-### Phase 4 — 선택적 분석 강화 (8월 계획, 신청서 핵심 차별점)
+### Phase 4 — 선택적 분석 강화 ✅ 코드 작업 완료 (2026-06-10, 신청서 핵심 차별점)
 
-신청서 "선택적 분석" 정의를 실제 구현으로 채우는 단계.
+구현 설계·완료 보고: [`phase-4-selective-analysis.md`](./phase-4-selective-analysis.md) — 데이터 흐름, 사후 필터 설계, 테스트, 리스크 정리.
 
-| # | 작업 | 위치 |
-|---|---|---|
-| 4.1 | `PipelineCreate.changed_files: list[str] \| None` 필드 추가 | `schemas/pipeline.py` |
-| 4.2 | `SecurityScanStep`이 `changed_files`만 스캔하도록 분기 | `security_scan_step.py` 루프에 파일 필터 추가 |
-| 4.3 | Action이 `git diff --name-only origin/${{ github.base_ref }}...HEAD` 결과를 백엔드에 전달 | `secscan.yml` |
-| 4.4 | "선택적 vs 전수" 시간/탐지수 비교 로깅 | 11월 실증 데이터 수집용 |
+신청서 "선택적 분석" 정의를 실제 구현으로 채우는 단계. 변경 파일(PR diff)만 스캔하는 사후 필터 + 전수/선택 비교 로깅.
+
+| # | 작업 | 위치 | 상태 |
+|---|---|---|---|
+| 4.1 | `PipelineCreate.changed_files: list[str] \| None` 필드 추가 (+ 공백 항목 정규화→None 환원). POST→service→runner→step_executor로 `changed_files`+`repo_root_path` 전파 | `schemas/pipeline.py`, `pipelines.py`, `pipeline_service.py`, `pipeline_runner.py`, `step_executor.py` | ✅ 완료 |
+| 4.2 | `SecurityScanStep`이 `changed_files`만 스캔하도록 분기 — semgrep finding의 file_path(절대경로)를 repo 루트 상대경로로 환원해 변경 집합과 매칭(정규화·AI 전 사전 필터) | `security_scan_step.py` (`_norm_rel`/`_build_changed_set`/`_finding_in_changed` 헬퍼) | ✅ 완료 |
+| 4.3 | Action이 `git diff --name-only origin/${{ github.base_ref }}...HEAD` 결과를 백엔드에 전달 (`vars.SECSCAN_SELECTIVE=true` 게이트, jq로 안전 직렬화) | `docs/templates/secscan.yml` | ✅ 완료 |
+| 4.4 | "선택적 vs 전수" 시간/탐지수 비교 로깅 (`scan_mode`, `findings_before_filter`, elapsed) | `security_scan_step.py` metadata + logger | ✅ 완료 |
+| — | 단위 테스트 11건 (헬퍼 6 + run-level 선택/전수/무매칭 3 + API forward/normalize 2) | `test_security_scan_step_selective.py`, `test_pipelines_api.py` | ✅ 112 passed |
+
+> 동작: `changed_files`가 비어 있으면(None/빈 목록) `scan_mode=full`(기존 전수 스캔, 하위호환). 비어 있지 않으면 `scan_mode=selective` — 변경 파일에 매칭되는 finding만 남긴다(매칭 0개면 0건 = "변경분에 한해 안전"). 잔여 환경 작업: 라이브 PR에서 selective 모드 실측(11월 4.4 데이터 수집).
 
 ---
 

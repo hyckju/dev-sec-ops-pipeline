@@ -3,7 +3,9 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+from pathlib import Path
 
 from app.core.config import settings
 
@@ -80,10 +82,16 @@ def _resolve_semgrep_executable() -> str | None:
     if found:
         return found
 
-    # macOS Homebrew 기본 경로 폴백
-    for candidate in ("/opt/homebrew/bin/semgrep", "/usr/local/bin/semgrep"):
-        if os.path.isfile(candidate):
-            return candidate
+    # venv 상대경로 폴백 — pytest를 venv python으로 실행할 때 PATH 미등록 상황 대응
+    for candidate in (
+        Path(sys.executable).parent / "semgrep",
+        Path(sys.executable).parent / "semgrep.exe",
+        # macOS Homebrew
+        Path("/opt/homebrew/bin/semgrep"),
+        Path("/usr/local/bin/semgrep"),
+    ):
+        if candidate.is_file():
+            return str(candidate)
 
     return None
 

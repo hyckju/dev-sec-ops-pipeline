@@ -29,6 +29,21 @@ class PipelineCreate(BaseModel):
         description="리포트에 포함할 CVE 정보 필드 (1~4개 선택). "
                     "선택 가능: cve_id, cwe, cvss_score, kev_listed, cpe_list, description",
     )
+    changed_files: list[str] | None = Field(
+        default=None,
+        description="선택적 분석 — 스캔을 이 파일 목록(저장소 루트 기준 상대경로)으로 한정한다. "
+                    "GitHub Action이 `git diff --name-only`로 PR 변경분을 전달한다. "
+                    "None 또는 빈 목록이면 전수(full) 스캔.",
+    )
+
+    @field_validator("changed_files")
+    @classmethod
+    def _normalize_changed_files(cls, v: list[str] | None) -> list[str] | None:
+        """공백/빈 문자열 항목 제거. 모두 비면 None(=전수 스캔)으로 환원."""
+        if v is None:
+            return None
+        cleaned = [f.strip() for f in v if f and f.strip()]
+        return cleaned or None
 
     @field_validator("selected_cve_fields")
     @classmethod
