@@ -8,9 +8,10 @@ __pycache__/
 .venv/
 venv/
 
-# IDE
+# IDE / AI 도구
 .idea/
 .vscode/
+.ai/
 
 # MacOS
 .DS_Store
