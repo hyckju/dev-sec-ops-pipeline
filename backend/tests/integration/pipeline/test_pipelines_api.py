@@ -7,6 +7,7 @@ DB는 AsyncMock으로 대체하고, PipelineService.create_and_run은 stub하여
 
 from __future__ import annotations
 
+from typing import Any
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -33,7 +34,7 @@ def mock_db_session() -> AsyncMock:
 
 
 @pytest.fixture
-def override_db(mock_db_session):
+def override_db(mock_db_session: AsyncMock):
     """FastAPI dependency_overrides로 get_db를 mock 세션으로 교체."""
 
     async def _override():
@@ -45,7 +46,7 @@ def override_db(mock_db_session):
 
 
 @pytest.fixture
-async def client(override_db):
+async def client(override_db: Any):
     """ASGITransport 기반 in-memory httpx 클라이언트 (lifespan 미실행)."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -88,7 +89,7 @@ def _stub_vuln(severity: Severity, cve_id: str | None = None):
 # ── POST /api/v1/pipelines/ — 정상 케이스 ─────────────────────────────
 
 
-async def test_post_pipeline_returns_202_and_response_shape(client, monkeypatch):
+async def test_post_pipeline_returns_202_and_response_shape(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
     """정상 요청은 202와 PipelineResponse 스키마를 반환해야 한다 (CI 폴링용 id 필수)."""
     fake = _stub_pipeline()
 
@@ -113,7 +114,7 @@ async def test_post_pipeline_returns_202_and_response_shape(client, monkeypatch)
     assert body["commit_sha"] is None
 
 
-async def test_post_pipeline_forwards_selected_cwe_ids(client, monkeypatch):
+async def test_post_pipeline_forwards_selected_cwe_ids(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
     """요청의 selected_cwe_ids가 서비스 레이어로 그대로 전달되어야 한다."""
     captured: dict = {}
 
@@ -145,7 +146,7 @@ async def test_post_pipeline_forwards_selected_cwe_ids(client, monkeypatch):
 # ── POST /api/v1/pipelines/ — 검증 실패 (CI 스크립트 작성자가 알아야 할 422) ─
 
 
-async def test_post_pipeline_rejects_non_http_url(client):
+async def test_post_pipeline_rejects_non_http_url(client: AsyncClient):
     """github_url이 HttpUrl 형식이 아니면 422."""
     resp = await client.post(
         "/api/v1/pipelines/",
@@ -154,7 +155,7 @@ async def test_post_pipeline_rejects_non_http_url(client):
     assert resp.status_code == 422
 
 
-async def test_post_pipeline_rejects_empty_cve_fields(client):
+async def test_post_pipeline_rejects_empty_cve_fields(client: AsyncClient):
     """selected_cve_fields가 빈 리스트면 422 (validator: 최소 1개)."""
     resp = await client.post(
         "/api/v1/pipelines/",
@@ -166,7 +167,7 @@ async def test_post_pipeline_rejects_empty_cve_fields(client):
     assert resp.status_code == 422
 
 
-async def test_post_pipeline_rejects_too_many_cve_fields(client):
+async def test_post_pipeline_rejects_too_many_cve_fields(client: AsyncClient):
     """selected_cve_fields가 5개 이상이면 422 (validator: 최대 4개)."""
     resp = await client.post(
         "/api/v1/pipelines/",
@@ -180,7 +181,7 @@ async def test_post_pipeline_rejects_too_many_cve_fields(client):
     assert resp.status_code == 422
 
 
-async def test_post_pipeline_rejects_unknown_cve_field(client):
+async def test_post_pipeline_rejects_unknown_cve_field(client: AsyncClient):
     """selected_cve_fields에 정의되지 않은 값이 있으면 422 (Enum 검증)."""
     resp = await client.post(
         "/api/v1/pipelines/",
@@ -192,7 +193,7 @@ async def test_post_pipeline_rejects_unknown_cve_field(client):
     assert resp.status_code == 422
 
 
-async def test_post_pipeline_deduplicates_cve_fields(client, monkeypatch):
+async def test_post_pipeline_deduplicates_cve_fields(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
     """validator가 중복 cve_field를 제거(순서 유지)하여 서비스에 전달해야 한다."""
     captured: dict = {}
 
@@ -213,7 +214,7 @@ async def test_post_pipeline_deduplicates_cve_fields(client, monkeypatch):
     assert captured["fields"] == ["cve_id", "cwe"]
 
 
-async def test_post_pipeline_forwards_changed_files(client, monkeypatch):
+async def test_post_pipeline_forwards_changed_files(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
     """changed_files(선택적 분석)가 서비스 레이어로 그대로 전달되어야 한다."""
     captured: dict = {}
 
@@ -234,7 +235,7 @@ async def test_post_pipeline_forwards_changed_files(client, monkeypatch):
     assert captured["changed_files"] == ["src/app/main.py", "src/app/db.py"]
 
 
-async def test_post_pipeline_normalizes_blank_changed_files_to_none(client, monkeypatch):
+async def test_post_pipeline_normalizes_blank_changed_files_to_none(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
     """공백/빈 문자열만 있는 changed_files는 None(=전수 스캔)으로 환원되어야 한다."""
     captured: dict = {}
 
@@ -258,7 +259,7 @@ async def test_post_pipeline_normalizes_blank_changed_files_to_none(client, monk
 # ── GET /api/v1/pipelines/ — 목록 ──────────────────────────────────────
 
 
-async def test_list_pipelines_returns_empty_array_when_none(client, override_db):
+async def test_list_pipelines_returns_empty_array_when_none(client: AsyncClient, override_db: Any):
     """파이프라인이 없으면 빈 배열을 반환해야 한다."""
     result_mock = MagicMock()
     result_mock.scalars.return_value.all.return_value = []
@@ -272,7 +273,7 @@ async def test_list_pipelines_returns_empty_array_when_none(client, override_db)
 # ── GET /api/v1/pipelines/{id} — 단일 조회 ────────────────────────────
 
 
-async def test_get_pipeline_returns_404_for_missing(client, override_db):
+async def test_get_pipeline_returns_404_for_missing(client: AsyncClient, override_db: Any):
     """존재하지 않는 파이프라인 ID는 404 + detail 메시지."""
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = None
@@ -287,7 +288,7 @@ async def test_get_pipeline_returns_404_for_missing(client, override_db):
     assert str(missing_id) in body["detail"]
 
 
-async def test_get_pipeline_rejects_malformed_uuid(client):
+async def test_get_pipeline_rejects_malformed_uuid(client: AsyncClient):
     """UUID 형식이 아닌 path param은 FastAPI가 422로 거부해야 한다."""
     resp = await client.get("/api/v1/pipelines/not-a-uuid")
     assert resp.status_code == 422
@@ -296,7 +297,7 @@ async def test_get_pipeline_rejects_malformed_uuid(client):
 # ── GET /api/v1/pipelines/{id}/vulnerabilities — 필터 파라미터 ────────
 
 
-async def test_get_vulnerabilities_returns_404_when_pipeline_missing(client, override_db):
+async def test_get_vulnerabilities_returns_404_when_pipeline_missing(client: AsyncClient, override_db: Any):
     """파이프라인 자체가 없으면 vulnerabilities 조회도 404."""
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = None
@@ -307,7 +308,7 @@ async def test_get_vulnerabilities_returns_404_when_pipeline_missing(client, ove
     assert resp.status_code == 404
 
 
-async def test_get_vulnerabilities_rejects_min_cvss_out_of_range(client):
+async def test_get_vulnerabilities_rejects_min_cvss_out_of_range(client: AsyncClient):
     """min_cvss는 0.0~10.0 범위. 11.0 같은 값은 422."""
     pipeline_id = uuid.uuid4()
     resp = await client.get(
@@ -317,7 +318,7 @@ async def test_get_vulnerabilities_rejects_min_cvss_out_of_range(client):
     assert resp.status_code == 422
 
 
-async def test_get_vulnerabilities_accepts_valid_filter_params(client, override_db):
+async def test_get_vulnerabilities_accepts_valid_filter_params(client: AsyncClient, override_db: Any):
     """severity/cwe_id/kev_only/sort_by/sort_order 모두 허용되어야 한다."""
     # 파이프라인 존재 + 빈 vuln 리스트 시나리오
     pipeline_mock = MagicMock(spec=Pipeline)
@@ -348,7 +349,7 @@ async def test_get_vulnerabilities_accepts_valid_filter_params(client, override_
 # ── GET /api/v1/pipelines/{id}/status — 가벼운 폴링 ───────────────────
 
 
-async def test_get_status_returns_404_for_missing(client, override_db):
+async def test_get_status_returns_404_for_missing(client: AsyncClient, override_db: Any):
     """존재하지 않는 파이프라인 status 조회는 404."""
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = None
@@ -359,7 +360,7 @@ async def test_get_status_returns_404_for_missing(client, override_db):
     assert resp.status_code == 404
 
 
-async def test_get_status_returns_progress_shape_without_vulnerabilities(client, override_db):
+async def test_get_status_returns_progress_shape_without_vulnerabilities(client: AsyncClient, override_db: Any):
     """status는 진행 단계 + 취약점 수만 반환하고 vulnerabilities를 직렬화하지 않아야 한다."""
     pipeline = _stub_pipeline()
     pipeline.status = PipelineStatus.RUNNING
@@ -386,7 +387,7 @@ async def test_get_status_returns_progress_shape_without_vulnerabilities(client,
     assert "vulnerabilities" not in body
 
 
-async def test_get_status_current_step_none_when_no_steps(client, override_db):
+async def test_get_status_current_step_none_when_no_steps(client: AsyncClient, override_db: Any):
     """steps가 비어 있으면 current_step은 None, completed_steps는 0이어야 한다."""
     pipeline = _stub_pipeline()
     pipeline.steps = []
@@ -409,7 +410,7 @@ async def test_get_status_current_step_none_when_no_steps(client, override_db):
 # ── GET /api/v1/pipelines/{id} — summary 집계 + KEV 주입 ──────────────
 
 
-async def test_get_pipeline_summary_counts_and_kev(client, override_db):
+async def test_get_pipeline_summary_counts_and_kev(client: AsyncClient, override_db: Any):
     """summary는 심각도별 카운트(합 == vulnerabilities 길이) + KEV 수를 집계해야 한다."""
     pipeline = _stub_pipeline()
     pipeline.vulnerabilities = [
@@ -445,14 +446,14 @@ async def test_get_pipeline_summary_counts_and_kev(client, override_db):
 # ── 인증 (verify_api_key) — settings.API_KEY 활성 시 ─────────────────
 
 
-async def test_auth_rejects_when_key_set_and_header_missing(client, override_db, monkeypatch):
+async def test_auth_rejects_when_key_set_and_header_missing(client: AsyncClient, override_db: Any, monkeypatch: pytest.MonkeyPatch):
     """API_KEY 설정 시 X-API-Key 헤더 없는 요청은 401 (기존 테스트는 키 미설정이라 영향 없음)."""
     monkeypatch.setattr(settings, "API_KEY", "secret-key")
     resp = await client.get("/api/v1/pipelines/")
     assert resp.status_code == 401
 
 
-async def test_auth_passes_when_header_matches(client, override_db, monkeypatch):
+async def test_auth_passes_when_header_matches(client: AsyncClient, override_db: Any, monkeypatch: pytest.MonkeyPatch):
     """API_KEY 설정 + 헤더 일치 시 정상 통과(200)해야 한다."""
     monkeypatch.setattr(settings, "API_KEY", "secret-key")
     result_mock = MagicMock()
