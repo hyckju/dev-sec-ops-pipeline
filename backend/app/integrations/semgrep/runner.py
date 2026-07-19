@@ -108,7 +108,12 @@ def _error_result(error_type: str, message: str) -> dict:
 class SemgrepRunner:
     """semgrep CLI를 subprocess로 실행하는 클래스."""
 
-    def run(self, repo_path: str, rules: list[str] | None = None) -> dict:
+    def run(
+        self,
+        repo_path: str,
+        rules: list[str] | None = None,
+        extra_args: list[str] | None = None,
+    ) -> dict:
         """
         semgrep을 subprocess로 실행하고 JSON 출력을 파싱하여 반환한다.
 
@@ -116,6 +121,11 @@ class SemgrepRunner:
             repo_path: 스캔 대상 로컬 저장소 경로
             rules: 적용할 semgrep 룰 목록. None이면 --config auto 사용.
                    예: ["p/sql-injection", "p/owasp-top-ten"]
+            extra_args: semgrep CLI에 그대로 추가할 인자 목록 (테스트 전용 용도).
+                        예: semgrep은 기본 .semgrepignore로 "tests/" 하위 경로를
+                        의도적으로 스킵하므로, 골든 픽스처처럼 tests/ 아래의
+                        "일부러 취약한" 코드를 스캔하려면
+                        ["--x-ignore-semgrepignore-files"]가 필요하다.
 
         Returns:
             파싱된 semgrep 출력:
@@ -155,6 +165,9 @@ class SemgrepRunner:
                 cmd.extend(["--config", rule])
         else:
             cmd.extend(["--config", "auto"])
+
+        if extra_args:
+            cmd.extend(extra_args)
 
         timeout = settings.SEMGREP_TIMEOUT
         logger.info(

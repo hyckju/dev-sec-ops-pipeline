@@ -9,6 +9,12 @@ SemgrepService.run_cwe_scan이 6개 CWE를 모두 탐지하는지 검증한다.
 
 전제: semgrep 바이너리가 PATH에 있어야 한다 (없으면 모듈 전체 skip).
 원격 룰팩(p/sql-injection 등)을 받기 위해 네트워크가 필요할 수 있다.
+
+주의: semgrep은 기본적으로 내장 .semgrepignore 규칙에 따라 "tests/" 하위 경로를
+스캔 대상에서 제외한다. 이 픽스처는 tests/.../fixtures/ 아래 있어 그대로 두면
+매번 "0 files scanned"로 조용히 넘어가므로, --x-ignore-semgrepignore-files로
+그 기본 제외를 무시하도록 명시한다 (semgrep --help의 "테스트를 위해 의도적으로
+망가진 코드를 스캔"하라는 취지 그대로).
 """
 
 from __future__ import annotations
@@ -38,9 +44,12 @@ TARGET_CWES = ["CWE-89", "CWE-79", "CWE-22", "CWE-918", "CWE-78", "CWE-798"]
 def scan_results() -> list[dict]:
     """모든 CWE 룰팩을 골든 픽스처에 한 번에 적용 (스캔 비용 절감).
 
-    semgrep 인증/네트워크 문제로 실행 자체가 안 되면 ERROR 대신 SKIPPED 처리.
-    11월 실증을 위한 진짜 검증은 `semgrep login` 후 환경 변수
-    `RUN_SEMGREP_GOLDEN=1` 으로 강제 실행할 수 있다.
+    --x-ignore-semgrepignore-files로 semgrep의 기본 "tests/ 제외" 규칙을
+    무시해야 이 픽스처(tests/.../fixtures/)가 실제로 스캔된다.
+
+    바이너리 실행 실패/네트워크 불가/룰팩 다운로드 실패 등으로 스캔 자체가
+    안 되면 ERROR 대신 SKIPPED 처리. 강제로 실패를 노출하려면 환경 변수
+    `RUN_SEMGREP_GOLDEN=1`.
     """
     svc = SemgrepService()
     try:
@@ -48,13 +57,14 @@ def scan_results() -> list[dict]:
             repo_path=str(FIXTURES_DIR),
             selected_cwe_ids=TARGET_CWES,
             cve_map={cwe: [] for cwe in TARGET_CWES},
+            extra_args=["--x-ignore-semgrepignore-files"],
         )
     except RuntimeError as exc:
-        # 인증 안 됨 / 네트워크 불가 / 룰팩 다운로드 실패 등
+        # 바이너리 실행 불가 / 네트워크 불가 / 룰팩 다운로드 실패 등
         if os.environ.get("RUN_SEMGREP_GOLDEN") == "1":
             raise  # 명시적으로 강제 실행 모드면 실패 그대로 노출
         pytest.skip(
-            f"semgrep 실행 실패 — login/network 확인 필요 ({exc}). "
+            f"semgrep 실행 실패 ({exc}). "
             f"강제 실행하려면 RUN_SEMGREP_GOLDEN=1 환경 변수 설정."
         )
 

@@ -202,6 +202,7 @@ class SemgrepService:
         repo_path: str,
         selected_cwe_ids: list[str],
         cve_map: dict[str, list[dict]],
+        extra_args: list[str] | None = None,
     ) -> list[dict]:
         """
         선택된 CWE 목록에 맞는 Semgrep 룰을 실행하고 각 finding에
@@ -212,6 +213,8 @@ class SemgrepService:
             selected_cwe_ids:  분석할 CWE ID 목록 (예: ["CWE-89", "CWE-79"])
             cve_map:           CVEService.fetch_cves_by_cwe() 반환값
                                {cwe_id: [cve_dict, ...]}
+            extra_args:        semgrep CLI에 그대로 전달할 추가 인자 (테스트 전용).
+                               SemgrepRunner.run() 참고.
 
         Returns:
             취약점 딕셔너리 리스트 (각 finding에 detected_cwe 필드 포함)
@@ -241,7 +244,7 @@ class SemgrepService:
         }
 
         def _scan_and_parse(rules: list[str] | None) -> list[dict]:
-            raw_output = self._runner.run(repo_path, rules=rules)
+            raw_output = self._runner.run(repo_path, rules=rules, extra_args=extra_args)
             raw_errors: list[dict] = raw_output.get("errors", [])
             if _has_semgrep_auth_or_config_error(raw_errors):
                 raise RuntimeError(
