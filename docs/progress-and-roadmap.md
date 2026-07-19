@@ -37,13 +37,17 @@ Phase 1~2 완료, Phase 3~4는 코드 작업 완료·환경/실측만 남음. Ph
 
 | Phase | 상태 | 남은 작업 |
 |---|---|---|
-| **1. 테스트 토대** | 부분 완료 | `semgrep login`(계정 인증) 하면 skipped 8건 활성화. 11월 실증 전 수행 |
+| **1. 테스트 토대** | 부분 완료 | 골든 픽스처 6 passed + 2 failed(CWE-798 미탐지, CWE-22/918 공유 룰팩(`p/java`) 교차오염) — 11월 실증 전 조사·해결 필요 |
 | **2. CI/CD 인터페이스** (인증·Dockerfile·status·summary) | ✅ 완료 | 없음 |
 | **3. GitHub Actions 워크플로** | ✅ 코드 완료 (`selected_cwe_ids` 전달 포함) | 라이브 검증(ngrok + WebGoat fork PR) — 환경 작업만 남음 |
 | **4. 선택적 분석 강화** (changed_files 기반 사후 필터) | ✅ 코드 완료 | 라이브 PR에서 selective 모드 실측 (11월 데이터) |
 | **5. SARIF 출력** | 미착수 | 선택 사항 — 시간 되면 진행, 아니면 생략 |
 
-현재 전체 테스트: **112 passed + 8 skipped** (`cd backend && .venv/Scripts/python.exe -m pytest -q`, 2026-07-19 재실행 확인). skipped 8건은 Phase 1 골든 픽스처가 semgrep 인증을 기다리는 것.
+현재 전체 테스트: **120 passed + 2 failed** (`cd backend && .venv/Scripts/python.exe -m pytest -q`, 2026-07-19 재실행 확인).
+이전에는 골든 픽스처 8건이 "semgrep login 필요"로 skip 처리되어 있었으나, 실제 원인은 semgrep이 기본적으로
+`.semgrepignore`에 따라 `tests/` 하위 경로를 스캔 대상에서 제외하는 것이었다(로그인/네트워크 문제 아님).
+`--x-ignore-semgrepignore-files` 플래그로 우회하도록 고쳐 실제 스캔이 돌게 만들었고, 그 결과 8건 중 6건은
+통과, 2건은 진짜 탐지 정확도 이슈로 드러났다(아래 Phase 1 행 참고).
 
 ---
 

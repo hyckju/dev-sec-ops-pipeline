@@ -268,18 +268,27 @@ Phase 3 (GitHub Actions 워크플로)와 함께 작성. 지금은 인터페이�
 
 ---
 
-## 11월 실증 시 진짜 정확도 검증 활성화
+## 11월 실증 시 진짜 정확도 검증 활성화 — ✅ 활성화 완료 (2026-07-19)
 
 8 skipped 이유 변경 이력:
 - 이전: `shutil.which("semgrep")` — venv PATH 미등록으로 바이너리 탐지 실패
-- 현재: `_resolve_semgrep_executable()` — venv 폴백으로 바이너리 탐지 성공, **`semgrep login` 미완료로 skip**
+- 그다음(오판): `_resolve_semgrep_executable()`로 바이너리는 찾았으나 매번 skip — 당시엔 "semgrep login 미완료"로 추정했음
+- **실제 원인(2026-07-19 확인)**: semgrep이 기본적으로 `.semgrepignore`에 따라 `tests/` 하위 경로를 스캔 대상에서
+  제외한다. 골든 픽스처가 `tests/.../fixtures/` 아래 있어 매번 "0 files scanned"로 조용히 지나가고 있었을 뿐,
+  login/네트워크와는 무관했다. `run_cwe_scan(..., extra_args=["--x-ignore-semgrepignore-files"])`로 우회하도록
+  고쳐 실제 스캔이 돌게 만들었다 (`SemgrepRunner.run()` / `test_cwe_scan_golden.py` 참고).
 
-지금 SKIPPED 8개를 진짜로 돌릴 때:
+결과: 8 skipped → **6 passed + 2 failed** (실제 탐지 정확도 이슈, semgrep 환경 문제 아님):
+- `CWE-798` (하드코딩 자격증명) 픽스처가 `p/secrets` 룰팩으로 전혀 탐지 안 됨
+- `CWE-22`(Path Traversal) Java 픽스처에서 `p/java` 룰팩의 XSS 룰이 함께 발화 → CWE-79로 오분류되어
+  "finding이 잘못된 픽스처 디렉토리에서 나옴" 테스트 실패 (CWE-22/CWE-918이 `p/java`를 공유해서 생기는 교차오염)
+
+강제로 돌려서(스킵 없이) 실패를 그대로 노출하려면:
 
 ```powershell
 cd backend
-.\.venv\Scripts\semgrep.exe login            # 브라우저 인증 (1회)
-.\.venv\Scripts\python.exe -m pytest tests/integration/security/ -v
+$env:RUN_SEMGREP_GOLDEN = "1"
+.\.venv\Scripts\python.exe -m pytest tests/integration/security/test_cwe_scan_golden.py -v
 ```
 
 이렇게 하면 6개 CWE 골든 픽스처에 대해 실제 semgrep 스캔이 돌고, 정탐/오탐 데이터가 보고서 raw data가 됨.
