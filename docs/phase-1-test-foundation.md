@@ -278,10 +278,18 @@ Phase 3 (GitHub Actions 워크플로)와 함께 작성. 지금은 인터페이�
   login/네트워크와는 무관했다. `run_cwe_scan(..., extra_args=["--x-ignore-semgrepignore-files"])`로 우회하도록
   고쳐 실제 스캔이 돌게 만들었다 (`SemgrepRunner.run()` / `test_cwe_scan_golden.py` 참고).
 
-결과: 8 skipped → **6 passed + 2 failed** (실제 탐지 정확도 이슈, semgrep 환경 문제 아님):
-- `CWE-798` (하드코딩 자격증명) 픽스처가 `p/secrets` 룰팩으로 전혀 탐지 안 됨
-- `CWE-22`(Path Traversal) Java 픽스처에서 `p/java` 룰팩의 XSS 룰이 함께 발화 → CWE-79로 오분류되어
-  "finding이 잘못된 픽스처 디렉토리에서 나옴" 테스트 실패 (CWE-22/CWE-918이 `p/java`를 공유해서 생기는 교차오염)
+결과: 8 skipped → 처음엔 6 passed + 2 failed, 아래 두 픽스처 수정 후 **9 passed, 0 failed, 0 skipped**:
+
+1. **`CWE-798`(하드코딩 자격증명) 미탐지** — `p/secrets` 룰팩 270개 중 218개가 Semgrep Pro(유료) 전용이라
+   무료 티어(58개)로는 기존 픽스처의 상수 나열 패턴이 하나도 안 걸렸다. 무료 티어에서 실제 발동하는 룰
+   (`python.boto3.security.hardcoded-token`)은 자격증명이 `boto3.client()`에 키워드 인자로 직접 전달되는
+   구조를 요구한다. 이미 있던 GitHub-allowlisted AWS 예제 키를 `boto3.client(aws_access_key_id=..., ...)`
+   호출로 감싸는 `connect_s3()` 함수를 추가해 해결(새 가짜 시크릿 불필요, 기존 값 재사용).
+2. **`CWE-22`(Path Traversal) Java 픽스처 → CWE-79로 오분류** — `downloadFile()`이 읽은 파일 바이트를
+   `resp.getOutputStream().write(...)`로 그대로 응답에 쓰고 있었는데, 이 패턴이 `p/java`의 일반 XSS
+   감사 룰(`no-direct-response-writer`)도 함께 발화시켰다(CWE-22와 CWE-918이 `p/java` 룰팩을 공유하는
+   구조라 생긴 교차오염). Path Traversal 탐지엔 `new File(...)` 줄만 필요하므로, 응답에 직접 쓰는 부분을
+   제거하고 바이트를 반환하는 형태로 바꿔 해결.
 
 강제로 돌려서(스킵 없이) 실패를 그대로 노출하려면:
 

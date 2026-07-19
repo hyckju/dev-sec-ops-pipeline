@@ -7,18 +7,21 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 public class Vulnerable {
 
-    public void downloadFile(HttpServletRequest req, HttpServletResponse resp)
-            throws IOException {
+    // 주의: 여기서 HttpServletResponse에 바이트를 직접 write하면 p/java의 일반 XSS
+    // 감사 룰(no-direct-response-writer)이 부수적으로 함께 발화해 CWE-22 픽스처가
+    // CWE-79로 오분류된다. Path Traversal 탐지엔 아래 File 생성 줄만 필요하므로
+    // 응답 스트림에는 쓰지 않는다.
+    public byte[] downloadFile(HttpServletRequest req) throws IOException {
         String filename = req.getParameter("file");
         // ruleid: tainted-file-path
         File f = new File("/var/data/" + filename);
         FileInputStream fis = new FileInputStream(f);
-        resp.getOutputStream().write(fis.readAllBytes());
+        byte[] bytes = fis.readAllBytes();
         fis.close();
+        return bytes;
     }
 
     public String readConfig(HttpServletRequest req) throws IOException {
