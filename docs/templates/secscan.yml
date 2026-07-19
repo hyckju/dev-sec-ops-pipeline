@@ -15,6 +15,9 @@
 # 선택적 분석 (옵션): 대상 리포에 Variables 로 SECSCAN_SELECTIVE=true 를 추가하면
 #   PR의 변경 파일(git diff)만 스캔한다. 미설정 시 전수(full) 스캔(기본).
 #   변경 파일이 0개면 스캔 결과도 0건 — "변경분에 한해 안전" 신호.
+#
+# CWE 선택 (옵션): 대상 리포에 Variables 로 SECSCAN_CWE_IDS 에 쉼표 구분 CWE 목록을
+#   추가하면 (예: "CWE-89,CWE-79") 해당 CWE만 스캔한다. 미설정 시 백엔드 기본 6종 전체.
 # ──────────────────────────────────────────────────────────────────────────
 name: Security Scan
 
@@ -59,11 +62,20 @@ jobs:
         run: |
           set -euo pipefail
           repo_url="${{ github.server_url }}/${{ github.repository }}"
-          # changed_files는 비어 있지 않을 때만 포함(빈 배열이면 전수 스캔). jq로 안전하게 직렬화.
+          # SECSCAN_CWE_IDS(쉼표 구분)가 설정되어 있으면 selected_cwe_ids로 전달, 미설정 시 백엔드 기본값 사용.
+          cwe_json='[]'
+          if [ -n "${{ vars.SECSCAN_CWE_IDS }}" ]; then
+            cwe_json=$(printf '%s' "${{ vars.SECSCAN_CWE_IDS }}" \
+              | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length>0))')
+          fi
+          # changed_files/selected_cwe_ids는 비어 있지 않을 때만 포함 (미포함 시 각각 전수 스캔/기본 CWE셋). jq로 안전하게 직렬화.
           body=$(jq -n \
             --arg url "$repo_url" \
             --argjson files '${{ steps.diff.outputs.changed_json }}' \
-            '{github_url: $url} + (if ($files | length) > 0 then {changed_files: $files} else {} end)')
+            --argjson cwes "$cwe_json" \
+            '{github_url: $url}
+             + (if ($files | length) > 0 then {changed_files: $files} else {} end)
+             + (if ($cwes | length) > 0 then {selected_cwe_ids: $cwes} else {} end)')
           resp=$(curl -fsS -X POST "$API/api/v1/pipelines/" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $KEY" \

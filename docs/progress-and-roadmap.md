@@ -1,23 +1,19 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-06-24
+마지막 업데이트: 2026-07-19
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
-- Phase 1 완료 보고서 (테스트 토대): [`phase-1-test-foundation.md`](./phase-1-test-foundation.md)
+- Phase별 상세 작업 일지: [`phase-1-test-foundation.md`](./phase-1-test-foundation.md) · [`phase-2-cicd-interface.md`](./phase-2-cicd-interface.md) · [`phase-3-github-actions.md`](./phase-3-github-actions.md) · [`phase-4-selective-analysis.md`](./phase-4-selective-analysis.md)
 - 일정 원본: `../2026학년도 C-리빙랩 프로젝트 참여신청서 .hwpx`
 
 ---
 
 ## 1. 한 줄 요약
 
-백엔드 보안 스캔 엔진(6단계 파이프라인 + Semgrep + NVD + AI 후처리)은 **선행 구현 완료**.
-현재는 외부 CI/CD(GitHub Actions 등)에서 호출 가능한 형태로 다듬는 **준비 단계**.
-Phase 1(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환경 충족 시 109 전체).
-Phase 2(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(2.1~2.4) + 신규 코드 테스트 11건 + 2.5 배포 위치 결정(DockerHub 레지스트리).
-Phase 3(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
-Phase 4(선택적 분석 강화) **코드 작업 완료** — `changed_files`(PR diff) 사후 필터 + `scan_mode`(selective/full) 비교 로깅, `vars.SECSCAN_SELECTIVE` 게이트, 단위 테스트 11건(전체 112 passed). 잔여는 라이브 selective 실측(11월 4.4 데이터).
-중간보고서(산학관주도 캡스톤디자인) **작성 중** — `fill_report.py` HWP COM 자동화 스크립트 작성(2026-06-24). 제출 기한 7/31.
+백엔드 보안 스캔 엔진(6단계 파이프라인 + Semgrep + NVD + AI 후처리)은 구현 완료.
+Phase 1~2 완료, Phase 3~4는 코드 작업 완료·환경/실측만 남음. Phase 5(SARIF)는 여유 있으면 진행하는 선택 사항.
+중간보고서(산학관주도 캡스톤디자인) 제출 기한 7/31.
 
 ---
 
@@ -25,158 +21,44 @@ Phase 4(선택적 분석 강화) **코드 작업 완료** — `changed_files`(PR
 
 | 월 | 계획 | 실제 상태 | 비고 |
 |---|---|---|---|
-| 4월 | 기업 요구사항/배포 환경 분석 | 완료 | 3월 초기 커밋으로 백엔드 구조 정립 |
-| **5월** | **시스템 아키텍처 설계** | 부분 완료 | docs는 *구현 기준* 명세. 설계 산출물(다이어그램, 선택적 스캔 정책)은 보강 필요 |
-| **6월** | **NVD REST API 연동 + 캐싱** | 선행 완료 + 중간보고서 작성 중 | `cve_service.py`, `cve_catalog` 모델 / `fill_report.py` HWP 자동화(7/31 제출) |
-| 7월 | CWE 기반 분석 + 필터링 | 선행 완료 | `semgrep_service.py`의 6개 CWE 설정 |
-| 8월 | 5종 취약점 탐지 고도화 + 속도 최적화 | 미시작 | 벤치마크 하네스 필요 |
-| 9월 | 중간점검 + LLM 연동 | 선행 완료 | Claude/Gemini 후처리 권고 통합됨 |
-| 10월 | GitHub Actions 등 CI/CD 통합 | 미시작 | **현재 작업 흐름의 목표** |
-| 11월 | 기업 테스트베드 실증 (탐지 정확도/속도) + 경진대회 (11.24) | 미시작 | 측정용 골든 데이터셋 필요 |
-| 12월 | 최종 보완 + 결과보고서 | 미시작 |  |
+| 4월 | 기업 요구사항/배포 환경 분석 | 완료 | |
+| 5월 | 시스템 아키텍처 설계 | 부분 완료 | 설계 산출물(다이어그램) 보강 필요 |
+| 6월 | NVD REST API 연동 + 캐싱 | 완료 | 중간보고서 작성 중 |
+| 7월 | CWE 기반 분석 + 필터링 | 완료 | |
+| 8월 | 5종 취약점 탐지 고도화 + 속도 최적화 | 미시작 | |
+| 9월 | 중간점검 + LLM 연동 | 완료 | |
+| 10월 | GitHub Actions 등 CI/CD 통합 | 진행 중 | 현재 작업 흐름의 목표 |
+| 11월 | 기업 테스트베드 실증 + 경진대회(11.24) | 미시작 | |
+| 12월 | 최종 보완 + 결과보고서 | 미시작 | |
 
 ---
 
-## 3. Phase 별 진행 상황 (CI/CD 통합 작업 흐름)
+## 3. Phase 별 진행 상황
 
-### Phase 1 — 테스트 토대 (진행 중)
-
-CI/CD 통합 전제 조건. *외부에서 호출할 API 계약*과 *보안 엔진 정확도*를 회귀로부터 보호한다.
-
-#### 완료된 항목
-
-| 파일 | 테스트 수 | 검증 영역 |
+| Phase | 상태 | 남은 작업 |
 |---|---|---|
-| `backend/tests/conftest.py` | (픽스처 3 + autouse cache reset) | NVD/CVE 모듈 캐시 격리, 샘플 NVD/CVE/Semgrep 데이터 |
-| `backend/tests/unit/services/test_semgrep_service.py` | 33 | `CWE_SCAN_CONFIG` 구조, severity 정규화, `_match_cve` (round-robin/severity-pool/fallback), semgrep error 감지, `run_cwe_scan` enrichment |
-| `backend/tests/unit/services/test_cve_service.py` | 23 | language→keyword 매핑, `_extract_cwe_id`, `_parse_cve_item` (CVSS v3.1→v3.0 폴백, CWE-NOINFO 무시), `fetch_cves_by_cwe` 캐시 hit/miss/만료, CISA KEV 피드 파싱·실패 처리 |
-| `backend/tests/integration/pipeline/test_pipelines_api.py` | 13 | `POST /pipelines/` 202 + 응답 스키마, 422 검증 4종 (비-HTTP url / 빈 cve_fields / 5개 초과 / Enum 외 값), 중복 cve_field 자동 제거, `GET /{id}` 404, malformed UUID 422, vulnerabilities 필터 파라미터 (severity/cwe_id/min_cvss/sort_by/sort_order/kev_only) |
-| `backend/tests/unit/services/test_pipeline_runner.py` | 13 | 정상 6-step 순서 보장, clone metadata→pipeline 컬럼 전파, vulnerabilities 저장 호출, clone 실패 시 즉시 중단, install/test 실패해도 scan까지 진행, scan 실패 시 build/report 미실행, build 실패해도 report 실행, workspace cleanup (성공/실패/예외 경로 모두), pipeline 미존재 시 조기 return, 잘못된 UUID 흡수 |
-| `backend/tests/integration/security/test_cwe_scan_golden.py` | 1 (+8 skipped) | 6개 CWE 골든 픽스처 디렉토리 sanity check (항상 실행) + 실제 semgrep 스캔으로 6개 CWE 정탐 / finding 필수 필드 / 픽스처 경로 정합성 검증 (semgrep 바이너리 있을 때만) |
-| `backend/tests/integration/security/fixtures/cwe_golden/` | — | **11월 실증 정확도 데이터셋 시드**: 6개 CWE 의도적 취약 코드 (Python 4 + Java 2) |
-| `backend/pyproject.toml` | — | `[tool.pytest.ini_options]` 추가 (`asyncio_mode=auto`, `testpaths=tests`) |
-| `backend/requirements.txt` | — | pytest, pytest-asyncio 추가 |
+| **1. 테스트 토대** | 부분 완료 | `semgrep login`(계정 인증) 하면 skipped 8건 활성화. 11월 실증 전 수행 |
+| **2. CI/CD 인터페이스** (인증·Dockerfile·status·summary) | ✅ 완료 | 없음 |
+| **3. GitHub Actions 워크플로** | ✅ 코드 완료 (`selected_cwe_ids` 전달 포함) | 라이브 검증(ngrok + WebGoat fork PR) — 환경 작업만 남음 |
+| **4. 선택적 분석 강화** (changed_files 기반 사후 필터) | ✅ 코드 완료 | 라이브 PR에서 selective 모드 실측 (11월 데이터) |
+| **5. SARIF 출력** | 미착수 | 선택 사항 — 시간 되면 진행, 아니면 생략 |
 
-**총 83 passed + 8 skipped (1.48s)** — skipped는 semgrep 바이너리 설치 시 자동 활성화
-
-실행 명령:
-```bash
-cd backend
-.venv/Scripts/python.exe -m pytest -v
-```
-
-#### 남은 작업
-
-| 우선순위 | 파일 (예정) | 검증 영역 | 의의 |
-|---|---|---|---|
-| ~~중~~ ✅ | `tests/integration/github/test_action_contract.py` | GitHub Action이 의존할 응답 필드 스키마 snapshot | **완료 (2026-06-02, 7건)** — Phase 3와 함께 작성 |
-| 하 | `semgrep login` (환경 작업) | `test_cwe_scan_golden.py` 8 skipped 활성화 — 바이너리 탐지는 수정됨(venv 폴백), 룰팩 다운로드에 Semgrep 계정 인증 필요. 11월 실증 전 수행. |
+현재 전체 테스트: **112 passed + 8 skipped** (`cd backend && .venv/Scripts/python.exe -m pytest -q`, 2026-07-19 재실행 확인). skipped 8건은 Phase 1 골든 픽스처가 semgrep 인증을 기다리는 것.
 
 ---
 
-### Phase 2 — CI/CD 인터페이스 ✅ 완료 (2026-06-01)
+## 4. 의사결정
 
-외부에서 호출 가능한 형태로 백엔드를 다듬는다. Phase 1의 API 계약 테스트가 *회귀 안전망* 역할.
-
-작업 일지: [`phase-2-cicd-interface.md`](./phase-2-cicd-interface.md)
-
-| # | 작업 | 위치 | 상태 |
-|---|---|---|---|
-| 2.1 | API 키 인증 추가 | `app/api/deps.py`의 `verify_api_key` 의존성, `pipelines.py` 라우터에 적용 | ✅ 완료 (키 미설정 시 비활성) |
-| 2.2 | Dockerfile 작성 | `backend/Dockerfile` + `backend/.dockerignore` | ✅ 완료 |
-| 2.3 | 가벼운 상태 폴링 엔드포인트 | `GET /api/v1/pipelines/{id}/status` — status + 진행 단계 + vuln 카운트만 반환 (전체 vulnerabilities 직렬화 X) | ✅ 완료 |
-| 2.4 | summary 필드 추가 | `PipelineDetailResponse.summary: {critical, high, medium, low, info, kev_count}` — PR 코멘트 작성용 | ✅ 완료 |
-| 2.5 | 백엔드 배포 위치 결정 | 이미지 레지스트리 **DockerHub** 확정 (publish는 Phase 3 GitHub Actions 자동화) | ✅ 완료 — 런타임 호스트는 미정(4.1) |
-
-> 신규 코드(인증/status/summary) 테스트 11건 추가 완료 (94 passed + 8 skipped). `SecurityScanException` 정리는 보류 유지(Phase 3 차단 정책 때). docker/DB 수동 스모크는 환경 준비 시 실행.
-
----
-
-### Phase 3 — GitHub Actions 워크플로 ⏳ 코드 작업 완료 (2026-06-02)
-
-구현 설계: [`phase-3-github-actions.md`](./phase-3-github-actions.md) — 워크플로 YAML, 시크릿, 구현 순서, 계약 테스트 정리.
-
-| # | 작업 | 위치 | 상태 |
-|---|---|---|---|
-| 3.0 | `docker-publish.yml` (이미지 build & push) | `.github/workflows/docker-publish.yml` | ✅ 작성 완료 (시크릿 등록·publish는 환경 작업) |
-| 3.1 | `secscan.yml` (대상 리포 배포 템플릿) | `docs/templates/secscan.yml` | ✅ 작성 완료 (trigger → poll → comment) |
-| 3.2 | PR 코멘트 회신 | `secscan.yml` 마지막 step (`github-script@v7`, 마커로 중복 코멘트 갱신) | ✅ 작성 완료 |
-| 3.3 | 차단 정책 분기 | `secscan.yml`에 `SECSCAN_ENFORCE` 변수 게이트 | ✅ 자리표시 완료 (정책 택1은 4.2, 11월 실측 후) |
-| 3.4 | 테스트 리포 1라운드 검증 | `actionlint` 린트 통과 / WebGoat 라이브 검증 | 🟡 린트 ✅ · 라이브(ngrok+fork PR) ⬜ 환경 작업 |
-| 3.5 | **선택적 스캔 CWE 전달** | `secscan.yml`에서 `vars.SECSCAN_CWE_IDS` → `selected_cwe_ids` POST body 포함 | ⬜ 미구현 — 선택적 스캔 CI/CD 핵심 연결고리 |
-| — | 계약 테스트 | `tests/integration/github/test_action_contract.py` | ✅ 7건 통과 |
-
-> `secscan.yml`은 *스캔 대상 리포*에 복사해 쓰는 파일이라 이 리포의 활성 워크플로(`.github/workflows/`)가 아닌 `docs/templates/`에 보관(자기 PR마다 실행되지 않도록). 남은 환경 작업: DockerHub 시크릿 등록 → publish 확인, 백엔드 ngrok 노출 + `API_KEY` 설정, WebGoat fork에 템플릿 배치 후 PR 코멘트 확인.
-
-부수 작업: `actionlint`로 두 워크플로 YAML 린트 **완료(0 errors, 2026-06-03)**. `act`(nektos/act) 로컬 dry-run은 러너 환경에서.
-
----
-
-### Phase 4 — 선택적 분석 강화 ✅ 코드 작업 완료 (2026-06-10, 신청서 핵심 차별점)
-
-구현 설계·완료 보고: [`phase-4-selective-analysis.md`](./phase-4-selective-analysis.md) — 데이터 흐름, 사후 필터 설계, 테스트, 리스크 정리.
-
-신청서 "선택적 분석" 정의를 실제 구현으로 채우는 단계. 변경 파일(PR diff)만 스캔하는 사후 필터 + 전수/선택 비교 로깅.
-
-| # | 작업 | 위치 | 상태 |
-|---|---|---|---|
-| 4.1 | `PipelineCreate.changed_files: list[str] \| None` 필드 추가 (+ 공백 항목 정규화→None 환원). POST→service→runner→step_executor로 `changed_files`+`repo_root_path` 전파 | `schemas/pipeline.py`, `pipelines.py`, `pipeline_service.py`, `pipeline_runner.py`, `step_executor.py` | ✅ 완료 |
-| 4.2 | `SecurityScanStep`이 `changed_files`만 스캔하도록 분기 — semgrep finding의 file_path(절대경로)를 repo 루트 상대경로로 환원해 변경 집합과 매칭(정규화·AI 전 사전 필터) | `security_scan_step.py` (`_norm_rel`/`_build_changed_set`/`_finding_in_changed` 헬퍼) | ✅ 완료 |
-| 4.3 | Action이 `git diff --name-only origin/${{ github.base_ref }}...HEAD` 결과를 백엔드에 전달 (`vars.SECSCAN_SELECTIVE=true` 게이트, jq로 안전 직렬화) | `docs/templates/secscan.yml` | ✅ 완료 |
-| 4.4 | "선택적 vs 전수" 시간/탐지수 비교 로깅 (`scan_mode`, `findings_before_filter`, elapsed) | `security_scan_step.py` metadata + logger | ✅ 완료 |
-| — | 단위 테스트 11건 (헬퍼 6 + run-level 선택/전수/무매칭 3 + API forward/normalize 2) | `test_security_scan_step_selective.py`, `test_pipelines_api.py` | ✅ 112 passed |
-
-> 동작: `changed_files`가 비어 있으면(None/빈 목록) `scan_mode=full`(기존 전수 스캔, 하위호환). 비어 있지 않으면 `scan_mode=selective` — 변경 파일에 매칭되는 finding만 남긴다(매칭 0개면 0건 = "변경분에 한해 안전"). 잔여 환경 작업: 라이브 PR에서 selective 모드 실측(11월 4.4 데이터 수집).
-
----
-
-### Phase 5 — SARIF 출력 (옵션, 9~10월 계획, 기업 어필용)
-
-| # | 작업 |
+| 항목 | 결정 |
 |---|---|
-| 5.1 | Vulnerability → SARIF v2.1.0 변환기 작성 |
-| 5.2 | `GET /pipelines/{id}/sarif` 엔드포인트 추가 |
-| 5.3 | Action에 `github/codeql-action/upload-sarif@v3` 단계 추가 → GitHub Security 탭에 표시 |
+| **배포 위치** (레지스트리) | DockerHub 확정 |
+| **배포 위치** (런타임 호스트) | 지금은 ngrok으로 개발 검증 → 8~9월에 EC2/Oracle Cloud 등으로 영구 전환 |
+| **차단 정책** | 지금은 리포팅만(차단 없음) → 11월 실증 false positive 데이터 확보 후 확정 |
+| **5월 설계 산출물** | 컴포넌트 다이어그램 + "선택적 분석" 정의 + 데이터 흐름도 — 별도 문서 보강 필요 (미착수) |
 
 ---
 
-## 4. 의사결정 대기 항목
-
-### 4.1 백엔드 배포 위치 (Phase 2.5 — 레지스트리 결정 완료, 런타임 호스트 미정)
-
-이미지 레지스트리는 **DockerHub로 확정**(이미지 저장/배포). 단, DockerHub는 레지스트리일 뿐이라
-**이미지를 실제로 run할 런타임 호스트는 미정**. 외부 GitHub Action이 호출하려면 인터넷에서 닿는 URL이 필요하다. 후보:
-
-| 후보 | 특징 | 적합 시기 |
-|---|---|---|
-| `ngrok http 8000` | 5분 셋업, 무료, URL이 매번 바뀜 | 개발 검증용 (즉시) |
-| AWS EC2 free tier / Oracle Cloud Always Free / 학교 서버 | 안정적, 도메인 부여 가능 | 8~9월부터 |
-| 클라우드에어 인프라 | 기업 환경 본격 적용 | 11월 실증 |
-
-권장 진행: Phase 2.1~2.4 코드 작업은 지금 시작, 배포는 *ngrok으로 1차 검증* → 8~9월에 영구 배포 전환.
-
-### 4.2 차단 정책 (Phase 3.3)
-
-신청서는 "취약점 발견 시 자동 차단"을 명시하지만, 어느 심각도부터 차단할지는 *11월 실증에서 false positive 비율을 측정한 다음*에 결정해야 의미가 있다.
-
-| 후보 | 운영 부담 | 신청서 정합성 |
-|---|---|---|
-| KEV 등재 CVE만 차단, 나머지는 경고 | 낮음 | 부분 충족 |
-| Critical/High 탐지 시 모두 차단 | 높음 (false positive 다발) | 가장 충실 |
-| 탐지하더라도 절대 차단 안 함 (리포팅만) | 없음 | 어긋남 |
-
-권장 진행: 지금은 *전부 리포팅만* 하는 모드로 시작 → 11월 실증 데이터 보고 정책 확정 → 보고서에 근거 데이터로 활용.
-
-### 4.3 5월 설계 산출물 보강
-
-`docs/security-scan-feature.md`는 "현재 구현 기준" 명세로 표기되어 있어, 5월 마일스톤(*시스템 아키텍처 설계*)의 산출물로 인정받기 어렵다. 별도 설계 문서 작성 권장:
-- 시스템 컴포넌트 다이어그램 (백엔드 ↔ Semgrep/NVD/AI ↔ DB ↔ 외부 CI)
-- "선택적 분석"의 정의 (사용자 명시 CWE / git diff 변경분 / KEV 우선순위 중 채택안)
-- 데이터 흐름 (PR 이벤트 → 파이프라인 실행 → 결과 회신)
-
----
-
-## 5. 핵심 코드 위치 (참고)
+## 5. 핵심 코드 위치
 
 | 영역 | 파일 |
 |---|---|
@@ -187,5 +69,5 @@ cd backend
 | AI 후처리 | `backend/app/integrations/gemini/client.py` |
 | API 라우터 | `backend/app/api/v1/pipelines.py` |
 | 스키마 | `backend/app/schemas/pipeline.py` |
-| DB 모델 | `backend/app/db/models/` (pipeline, vulnerability, cve_catalog, project, report) |
-| 테스트 | `backend/tests/` (unit, integration, e2e 하위 구조) |
+| DB 모델 | `backend/app/db/models/` |
+| 테스트 | `backend/tests/` |
