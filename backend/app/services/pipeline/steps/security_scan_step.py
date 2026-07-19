@@ -150,6 +150,7 @@ class SecurityScanStep:
         vulnerabilities: list[dict] = []
         ai_suggestion_count = 0
         all_flat_cves: list[dict] = []
+        scan_errors: dict[str, str] = {}
 
         for cwe_id in _cwe_ids:
             _cwe_start = time.perf_counter()
@@ -172,6 +173,7 @@ class SecurityScanStep:
                 )
             except Exception as exc:
                 logger.warning("SecurityScanStep: semgrep failed for %s: %s", cwe_id, exc)
+                scan_errors[cwe_id] = str(exc)
                 cwe_scan_times[cwe_id] = time.perf_counter() - _cwe_start
                 continue
 
@@ -242,10 +244,21 @@ class SecurityScanStep:
             )
         else:
             mode_note = f"mode=full findings={len(vulnerabilities)}"
+
+        # 전체 CWE가 스캔 실패했다면 "취약점 0건"이 아니라 스캔 자체가 안 된 것이므로
+        # 이를 success로 위장하지 않고 명시적으로 failed 처리한다 (semgrep 실행 불가 등).
+        all_failed = bool(scan_errors) and len(scan_errors) == len(_cwe_ids)
+        failed_note = f" [FAILED cwe={list(scan_errors)}]" if scan_errors else ""
         scan_log = (
             f"CWE scan complete ({_cwe_ids}): {len(vulnerabilities)} finding(s) "
-            f"[AI suggestions: {ai_suggestion_count}] [{mode_note}] in {repo_path}"
+            f"[AI suggestions: {ai_suggestion_count}] [{mode_note}]{failed_note} in {repo_path}"
         )
+
+        if scan_errors:
+            logger.warning(
+                "SecurityScanStep: %d/%d CWE scan(s) failed: %s",
+                len(scan_errors), len(_cwe_ids), scan_errors,
+            )
 
         logger.info(
             "SecurityScanStep: %d finding(s) detected, %d AI suggestions "
@@ -256,6 +269,25 @@ class SecurityScanStep:
             mode_note,
             _elapsed,
         )
+
+        if all_failed:
+            error_summary = "; ".join(f"{cwe}: {msg}" for cwe, msg in scan_errors.items())
+            return StepResult(
+                type=_STEP_TYPE,
+                status=StepStatus.FAILED,
+                log=scan_log,
+                started_at=started_at,
+                finished_at=finished_at,
+                error=f"All {len(_cwe_ids)} CWE scan(s) failed — no scan actually ran: {error_summary}",
+                metadata={
+                    "vulnerabilities": [],
+                    "scan_log": scan_log,
+                    "cwe_scan_times": cwe_scan_times,
+                    "scan_mode": _scan_mode,
+                    "findings_before_filter": _findings_before_filter,
+                    "scan_errors": scan_errors,
+                },
+            )
 
         return StepResult(
             type=_STEP_TYPE,
@@ -269,5 +301,6 @@ class SecurityScanStep:
                 "cwe_scan_times": cwe_scan_times,
                 "scan_mode": _scan_mode,
                 "findings_before_filter": _findings_before_filter,
+                "scan_errors": scan_errors,
             },
         )

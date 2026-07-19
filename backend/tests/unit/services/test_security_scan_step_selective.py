@@ -161,3 +161,72 @@ async def test_run_selective_no_match_yields_zero(tmp_path, monkeypatch, _no_ai)
     assert result.metadata["vulnerabilities"] == []
     assert result.metadata["scan_mode"] == "selective"
     assert result.metadata["findings_before_filter"] == 1
+
+
+# ── semgrep 실행 실패 처리 (0건 위장 방지) ──────────────────────────────
+
+
+def _patch_semgrep_raises(monkeypatch, message: str = "semgrep executable not found") -> None:
+    """SemgrepService.run_cwe_scan이 모든 호출에서 예외를 던지도록 패치."""
+
+    def _fake_run_cwe_scan(self, repo_path, cwe_ids, cwe_cve_map):
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(
+        "app.services.security.semgrep_service.SemgrepService.run_cwe_scan",
+        _fake_run_cwe_scan,
+    )
+
+
+async def test_run_all_cwe_scans_failing_marks_step_failed(tmp_path, monkeypatch, _no_ai):
+    """선택된 CWE 전부 semgrep 실행에 실패하면 '0건 성공'으로 위장하지 않고 FAILED여야 한다."""
+    repo_root = str(tmp_path)
+    _patch_semgrep_raises(monkeypatch, "semgrep executable not found")
+
+    result = await SecurityScanStep().run(
+        repo_path=repo_root,
+        language="python",
+        cve_list=[],
+        selected_cwe_ids=["CWE-89", "CWE-79"],
+        changed_files=None,
+        repo_root_path=repo_root,
+    )
+
+    assert result.status == StepStatus.FAILED
+    assert "CWE-89" in result.error and "CWE-79" in result.error
+    assert result.metadata["vulnerabilities"] == []
+    assert set(result.metadata["scan_errors"]) == {"CWE-89", "CWE-79"}
+
+
+async def test_run_partial_cwe_scan_failure_still_succeeds_but_reports_errors(
+    tmp_path, monkeypatch, _no_ai
+):
+    """일부 CWE만 semgrep 실행에 실패하면 나머지 결과는 살리되 실패분을 metadata에 남긴다."""
+    repo_root = str(tmp_path)
+    ok_file = os.path.join(repo_root, "a.py")
+
+    call_count = {"n": 0}
+
+    def _fake_run_cwe_scan(self, repo_path, cwe_ids, cwe_cve_map):
+        call_count["n"] += 1
+        if cwe_ids == ["CWE-89"]:
+            raise RuntimeError("semgrep executable not found")
+        return [{"rule_id": "r1", "file_path": ok_file, "message": "x", "cvss_score": 9.1}]
+
+    monkeypatch.setattr(
+        "app.services.security.semgrep_service.SemgrepService.run_cwe_scan",
+        _fake_run_cwe_scan,
+    )
+
+    result = await SecurityScanStep().run(
+        repo_path=repo_root,
+        language="python",
+        cve_list=[],
+        selected_cwe_ids=["CWE-89", "CWE-79"],
+        changed_files=None,
+        repo_root_path=repo_root,
+    )
+
+    assert result.status == StepStatus.SUCCESS
+    assert len(result.metadata["vulnerabilities"]) == 1
+    assert result.metadata["scan_errors"] == {"CWE-89": "semgrep executable not found"}
