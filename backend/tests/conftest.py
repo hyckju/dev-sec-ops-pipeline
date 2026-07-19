@@ -10,6 +10,20 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _default_api_key_disabled():
+    """로컬 .env에 실제 API_KEY가 설정돼 있어도 테스트는 기본적으로 인증 비활성을 가정한다.
+
+    인증 자체를 검증하는 테스트는 그 안에서 monkeypatch로 값을 지정하므로 영향받지 않는다.
+    """
+    from app.core.config import settings
+
+    original = settings.API_KEY
+    settings.API_KEY = ""
+    yield
+    settings.API_KEY = original
+
+
+@pytest.fixture(autouse=True)
 def _reset_cve_module_caches():
     """모듈 전역 캐시가 테스트 간 상태를 흘리지 않도록 매 테스트마다 비운다."""
     from app.services.security import cve_service as cs

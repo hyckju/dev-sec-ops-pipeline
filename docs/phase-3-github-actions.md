@@ -2,7 +2,7 @@
 
 작성: 2026-06-02
 관련 문서: [`phase-2-cicd-interface.md`](./phase-2-cicd-interface.md), [`progress-and-roadmap.md`](./progress-and-roadmap.md)
-상태: **코드 작업 완료** — 계약 테스트(7건) + 두 워크플로 작성·`actionlint` 통과(2026-06-03) + `selected_cwe_ids` 전달(3.5, 2026-07-19). 차단 정책은 `SECSCAN_ENFORCE` 변수 게이트로 자리 마련(정책 택1만 11월 실측 후). 잔여는 순수 환경 작업(시크릿 등록·ngrok·WebGoat 라이브 검증).
+상태: **✅ 완료 (2026-07-19)** — 계약 테스트(7건) + 두 워크플로 작성·`actionlint` 통과(2026-06-03) + `selected_cwe_ids` 전달(3.5) + **라이브 검증(3.4) 완료**: ngrok으로 노출한 백엔드를 fork 리포 PR이 실제로 호출해 trigger→poll→comment까지 성공. 차단 정책은 `SECSCAN_ENFORCE` 변수 게이트로 자리만 마련(정책 택1은 11월 실측 후). 남은 건 DockerHub publish 확인(2.5/3.0, 이 Phase의 핵심 검증과는 무관)뿐.
 
 ---
 
@@ -209,12 +209,18 @@ jobs:
 
 ---
 
-## 3.4 검증 (3.4)
+## 3.4 검증 (3.4) — ✅ 완료 (2026-07-19)
 
-- **로컬 dry-run**: `actionlint`로 YAML 린트, `act`(nektos/act)로 secscan 로컬 실행.
-- **WebGoat 등 의도적 취약 리포**로 1라운드:
-  - 백엔드를 ngrok으로 노출(런타임 호스트 미정이므로 1차는 ngrok) → secscan.yml을 fork에 배치 → PR 생성 → 코멘트 확인.
-  - Phase 1 골든 픽스처 6 CWE가 실제로 summary에 잡히는지 교차 확인.
+- **로컬 dry-run**: `actionlint`로 YAML 린트 통과(0 errors). `act`(nektos/act) 로컬 실행은 생략(아래 실제 라이브 검증으로 대체).
+- **라이브 1라운드 실행**: `we45/Vulnerable-Flask-App`을 fork(`hyckju/Vulnerable-Flask-App`)한 뒤 실제로 end-to-end 검증.
+  - 백엔드를 ngrok(`winget install Ngrok.Ngrok`, authtoken 등록 후 `ngrok http 8000`)으로 노출.
+  - 노출 전 `API_KEY` 설정(그전까진 인증 없이 열려 있었음 — 반드시 먼저 설정할 것). `X-API-Key` 헤더 없이는 401, 있으면 200 확인.
+  - fork에 `secscan.yml` 배치(대상 리포 기본 브랜치가 `main`이 아니라 `master`라 트리거 브랜치 수정 필요했음) +
+    `SECSCAN_BACKEND_URL`/`SECSCAN_API_KEY` 시크릿 등록(`gh secret set`) → PR #1 생성.
+  - 워크플로가 실제로 trigger(202) → 30초 폴링 → detail 조회 → PR 코멘트까지 2m12s 만에 전부 성공.
+    코멘트에 실제 탐지 결과(High 1 / Medium 2, SQLi+XSS) 표시됨: <https://github.com/hyckju/Vulnerable-Flask-App/pull/1>
+  - 검증 후 ngrok 터널 종료. 결과: [`phase-1-test-foundation.md`](./phase-1-test-foundation.md) 골든 픽스처 검증과 별개로,
+    실제 공개 리포 스캔 경로(clone→scan→report→comment) 전체가 살아있음을 확인.
 
 ---
 
@@ -247,9 +253,9 @@ Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phas
 
 1. [x] 계약 테스트 `test_action_contract.py` 작성 (TDD — 인터페이스 고정) — **7건 통과**
 2. [x] `docker-publish.yml` 작성 → `.github/workflows/docker-publish.yml`. *시크릿 등록·publish 확인은 환경 작업(아래)*
-3. [ ] 백엔드 ngrok 노출 + `API_KEY` 설정 (1차 런타임) — **환경 작업**
-4. [x] `secscan.yml` 작성 (trigger → poll → comment) → `docs/templates/secscan.yml`(대상 리포 복사용). `act` dry-run은 환경 작업
-5. [ ] WebGoat fork에 배치 → PR로 실제 코멘트 확인 — **환경 작업**
+3. [x] 백엔드 ngrok 노출 + `API_KEY` 설정 (1차 런타임) — **완료 (2026-07-19, 검증 후 터널 종료)**
+4. [x] `secscan.yml` 작성 (trigger → poll → comment) → `docs/templates/secscan.yml`(대상 리포 복사용). `act` dry-run은 생략(라이브 검증으로 대체)
+5. [x] fork에 배치 → PR로 실제 코멘트 확인 — **완료 (2026-07-19)**. WebGoat 대신 가볍고 빠른 `we45/Vulnerable-Flask-App` fork 사용 — PR #1에서 trigger→poll→comment 2m12s 만에 성공
 6. [x] (보류→자리표시 완료) 차단 정책 — `SECSCAN_ENFORCE` 변수 게이트로 마련. 정책 택1은 11월 실측 후
 7. [x] `actionlint`로 두 워크플로 YAML 린트 — **통과(0 errors)**, YAML 파싱 검증도 통과
 8. [x] `secscan.yml`: `vars.SECSCAN_CWE_IDS` → `selected_cwe_ids` 파싱 후 POST body에 포함 — **완료 (2026-07-19)**
@@ -263,9 +269,8 @@ Action이 의존하는 **응답 필드 스키마를 snapshot으로 고정**(Phas
 없음 — Phase 3 코드 작업은 모두 완료. 잔여는 아래 환경 작업뿐.
 
 ### 남은 환경 작업 (코드 외)
-- DockerHub: `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` 시크릿 등록 → main push로 1회 publish 확인
-- 백엔드 런타임: `ngrok http 8000` 노출 + `API_KEY` 설정 (URL은 무료 ngrok 특성상 매번 변동)
-- 대상 리포(WebGoat fork): `secscan.yml` 복사 + `SECSCAN_BACKEND_URL`/`SECSCAN_API_KEY` 시크릿 → PR 생성해 코멘트 확인
+- DockerHub: `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` 시크릿 등록 → main push로 1회 publish 확인 (Phase 3.4 라이브 검증과 별개 — 아직 미완)
+- ~~백엔드 ngrok 노출 + 대상 리포 PR 검증~~ — ✅ 완료(위 3.4). ngrok은 무료 URL이 매번 바뀌므로, 다음에 다시 라이브 검증할 땐 새 URL로 시크릿(`SECSCAN_BACKEND_URL`) 재등록 필요.
 
 ---
 
