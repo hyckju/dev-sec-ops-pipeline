@@ -1,8 +1,17 @@
-# Phase 4 — 선택적 분석 강화 (구현 설계·완료 보고)
+# Phase 4 — 선택적 분석 강화 (구현 설계·완료 보고) — ⛔ 되돌림 (2026-07-27)
+
+> **되돌림(reverted)**: 이 문서가 정의한 "선택적 분석" (PR `git diff` 변경 파일만 스캔)은
+> 신청서·최초 설계 산출물이 말하는 "선택적 분석"과 다른 개념으로 확인되어 **코드에서 전부 제거**했다.
+> 신청서의 실제 의미는 **검사할 CWE/취약점 항목을 선택**하는 것이며, 이는 Phase 1부터 존재하던
+> `selected_cwe_ids`로 이미 구현되어 있다(파이프라인 앞: API 요청 시 CWE 선택 → 뒤: 해당 CWE만 검사).
+> CI 쪽 연결고리는 [`phase-3-github-actions.md`](./phase-3-github-actions.md) §3.5(`SECSCAN_CWE_IDS`)로 대체 구현했다.
+> 아래 내용은 **삭제된 기능의 설계 기록**으로만 남긴다 — 현재 코드/워크플로와 더 이상 일치하지 않는다.
+
+---
 
 작성: 2026-06-10
 관련 문서: [`phase-3-github-actions.md`](./phase-3-github-actions.md), [`progress-and-roadmap.md`](./progress-and-roadmap.md)
-상태: **코드 작업 완료** — `changed_files`(PR diff) 사후 필터 + `scan_mode`(selective/full) 비교 로깅, `vars.SECSCAN_SELECTIVE` 게이트, 단위 테스트 11건(전체 **112 passed + 8 skipped**). 잔여는 라이브 selective 실측(11월 §4.4 데이터 수집).
+상태: ~~코드 작업 완료~~ → **되돌림**. 원래 상태: `changed_files`(PR diff) 사후 필터 + `scan_mode`(selective/full) 비교 로깅, `vars.SECSCAN_SELECTIVE` 게이트, 단위 테스트 11건(전체 **112 passed + 8 skipped**).
 
 ---
 

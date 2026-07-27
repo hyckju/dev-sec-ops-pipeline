@@ -1,6 +1,6 @@
 # 진행 현황 및 로드맵 (CI/CD 보안 파이프라인)
 
-마지막 업데이트: 2026-06-24
+마지막 업데이트: 2026-07-27
 
 관련 문서
 - 현재 구현 명세: [`security-scan-feature.md`](./security-scan-feature.md)
@@ -15,9 +15,9 @@
 현재는 외부 CI/CD(GitHub Actions 등)에서 호출 가능한 형태로 다듬는 **준비 단계**.
 Phase 1(테스트 토대) **부분 완료** (101 passed + 8 skipped, semgrep 환경 충족 시 109 전체).
 Phase 2(CI/CD 인터페이스) **완료** — 인증·Dockerfile·status 엔드포인트·summary 필드(2.1~2.4) + 신규 코드 테스트 11건 + 2.5 배포 위치 결정(DockerHub 레지스트리).
-Phase 3(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
-Phase 4(선택적 분석 강화) **코드 작업 완료** — `changed_files`(PR diff) 사후 필터 + `scan_mode`(selective/full) 비교 로깅, `vars.SECSCAN_SELECTIVE` 게이트, 단위 테스트 11건(전체 112 passed). 잔여는 라이브 selective 실측(11월 4.4 데이터).
-중간보고서(산학관주도 캡스톤디자인) **작성 중** — `fill_report.py` HWP COM 자동화 스크립트 작성(2026-06-24). 제출 기한 7/31.
+Phase 3(GitHub Actions) **코드 작업 완료** — 계약 테스트 7건 + `docker-publish.yml` + `secscan.yml` 템플릿, 두 워크플로 `actionlint` 통과, 차단 정책 `SECSCAN_ENFORCE` 변수 게이트 마련, **3.5(`SECSCAN_CWE_IDS` → `selected_cwe_ids` 전달) 완료(2026-07-27)**. 잔여는 순수 환경 작업(시크릿·ngrok·WebGoat 라이브 검증).
+Phase 4(선택적 분석 강화) **⛔ 되돌림(2026-07-27)** — diff 기반 `changed_files`(PR 변경 파일 필터)를 "선택적 분석"으로 구현했었으나, 신청서·설계 산출물의 실제 의미는 **CWE/취약점 항목 선택**임을 재확인해 관련 코드·테스트를 전부 제거. "선택적 분석"은 Phase 1부터 있던 `selected_cwe_ids` + 위 Phase 3.5 CI 연결로 이미 완성된 상태. 자세한 경위는 [`phase-4-selective-analysis.md`](./phase-4-selective-analysis.md) 상단 참고.
+중간보고서(산학관주도 캡스톤디자인) **제출 완료(2026-07-31 이전)**.
 
 ---
 
@@ -103,7 +103,7 @@ cd backend
 | 3.2 | PR 코멘트 회신 | `secscan.yml` 마지막 step (`github-script@v7`, 마커로 중복 코멘트 갱신) | ✅ 작성 완료 |
 | 3.3 | 차단 정책 분기 | `secscan.yml`에 `SECSCAN_ENFORCE` 변수 게이트 | ✅ 자리표시 완료 (정책 택1은 4.2, 11월 실측 후) |
 | 3.4 | 테스트 리포 1라운드 검증 | `actionlint` 린트 통과 / WebGoat 라이브 검증 | 🟡 린트 ✅ · 라이브(ngrok+fork PR) ⬜ 환경 작업 |
-| 3.5 | **선택적 스캔 CWE 전달** | `secscan.yml`에서 `vars.SECSCAN_CWE_IDS` → `selected_cwe_ids` POST body 포함 | ⬜ 미구현 — 선택적 스캔 CI/CD 핵심 연결고리 |
+| 3.5 | **선택적 스캔 CWE 전달** | `secscan.yml`에서 `vars.SECSCAN_CWE_IDS` → `selected_cwe_ids` POST body 포함 | ✅ 완료 (2026-07-27) — 선택적 스캔(=CWE 항목 선택) CI/CD 핵심 연결고리 |
 | — | 계약 테스트 | `tests/integration/github/test_action_contract.py` | ✅ 7건 통과 |
 
 > `secscan.yml`은 *스캔 대상 리포*에 복사해 쓰는 파일이라 이 리포의 활성 워크플로(`.github/workflows/`)가 아닌 `docs/templates/`에 보관(자기 PR마다 실행되지 않도록). 남은 환경 작업: DockerHub 시크릿 등록 → publish 확인, 백엔드 ngrok 노출 + `API_KEY` 설정, WebGoat fork에 템플릿 배치 후 PR 코멘트 확인.
@@ -112,21 +112,18 @@ cd backend
 
 ---
 
-### Phase 4 — 선택적 분석 강화 ✅ 코드 작업 완료 (2026-06-10, 신청서 핵심 차별점)
+### Phase 4 — 선택적 분석 강화 ⛔ 되돌림 (2026-07-27)
 
-구현 설계·완료 보고: [`phase-4-selective-analysis.md`](./phase-4-selective-analysis.md) — 데이터 흐름, 사후 필터 설계, 테스트, 리스크 정리.
+구현 설계·되돌림 경위: [`phase-4-selective-analysis.md`](./phase-4-selective-analysis.md) 상단 배너 참고.
 
-신청서 "선택적 분석" 정의를 실제 구현으로 채우는 단계. 변경 파일(PR diff)만 스캔하는 사후 필터 + 전수/선택 비교 로깅.
+2026-06-10에 diff 기반 `changed_files`(PR 변경 파일만 스캔하는 사후 필터)로 신청서의 "선택적 분석"을 구현했었으나,
+신청서·5월 설계 산출물(`system-architecture.md`)이 말하는 "선택적 분석"은 **검사할 CWE/취약점 항목을 선택하는 것**임을
+재확인했다(2026-07-27). 이는 Phase 1부터 있던 `selected_cwe_ids`로 이미 구현돼 있었고, CI 쪽 연결고리만
+Phase 3.5로 새로 채웠다. 이에 따라 `changed_files` 관련 코드·테스트·문서를 전부 제거했다:
 
-| # | 작업 | 위치 | 상태 |
-|---|---|---|---|
-| 4.1 | `PipelineCreate.changed_files: list[str] \| None` 필드 추가 (+ 공백 항목 정규화→None 환원). POST→service→runner→step_executor로 `changed_files`+`repo_root_path` 전파 | `schemas/pipeline.py`, `pipelines.py`, `pipeline_service.py`, `pipeline_runner.py`, `step_executor.py` | ✅ 완료 |
-| 4.2 | `SecurityScanStep`이 `changed_files`만 스캔하도록 분기 — semgrep finding의 file_path(절대경로)를 repo 루트 상대경로로 환원해 변경 집합과 매칭(정규화·AI 전 사전 필터) | `security_scan_step.py` (`_norm_rel`/`_build_changed_set`/`_finding_in_changed` 헬퍼) | ✅ 완료 |
-| 4.3 | Action이 `git diff --name-only origin/${{ github.base_ref }}...HEAD` 결과를 백엔드에 전달 (`vars.SECSCAN_SELECTIVE=true` 게이트, jq로 안전 직렬화) | `docs/templates/secscan.yml` | ✅ 완료 |
-| 4.4 | "선택적 vs 전수" 시간/탐지수 비교 로깅 (`scan_mode`, `findings_before_filter`, elapsed) | `security_scan_step.py` metadata + logger | ✅ 완료 |
-| — | 단위 테스트 11건 (헬퍼 6 + run-level 선택/전수/무매칭 3 + API forward/normalize 2) | `test_security_scan_step_selective.py`, `test_pipelines_api.py` | ✅ 112 passed |
-
-> 동작: `changed_files`가 비어 있으면(None/빈 목록) `scan_mode=full`(기존 전수 스캔, 하위호환). 비어 있지 않으면 `scan_mode=selective` — 변경 파일에 매칭되는 finding만 남긴다(매칭 0개면 0건 = "변경분에 한해 안전"). 잔여 환경 작업: 라이브 PR에서 selective 모드 실측(11월 4.4 데이터 수집).
+- 제거: `schemas/pipeline.py`의 `changed_files` 필드, `pipeline_service.py`/`pipeline_runner.py`/`step_executor.py`의 전파 배선, `security_scan_step.py`의 `_norm_rel`/`_build_changed_set`/`_finding_in_changed` 사후 필터 + `scan_mode`/`findings_before_filter` 로깅, `secscan.yml`의 diff 계산 스텝, `test_security_scan_step_selective.py` 전체 + `test_pipelines_api.py`의 관련 테스트 2건.
+- 대체: `secscan.yml`에 `SECSCAN_CWE_IDS` 파싱 스텝 추가(Phase 3.5) — 리포 Variables로 CWE를 고르면 `selected_cwe_ids`로 전달.
+- 테스트: 제거분 반영해 **101 passed + 8 skipped**로 복귀(Phase 4 추가분 11건 제외).
 
 ---
 
@@ -167,12 +164,10 @@ cd backend
 
 권장 진행: 지금은 *전부 리포팅만* 하는 모드로 시작 → 11월 실증 데이터 보고 정책 확정 → 보고서에 근거 데이터로 활용.
 
-### 4.3 5월 설계 산출물 보강
+### 4.3 5월 설계 산출물 보강 — ✅ 완료 (`system-architecture.md`), 정의 확정 (2026-07-27)
 
-`docs/security-scan-feature.md`는 "현재 구현 기준" 명세로 표기되어 있어, 5월 마일스톤(*시스템 아키텍처 설계*)의 산출물로 인정받기 어렵다. 별도 설계 문서 작성 권장:
-- 시스템 컴포넌트 다이어그램 (백엔드 ↔ Semgrep/NVD/AI ↔ DB ↔ 외부 CI)
-- "선택적 분석"의 정의 (사용자 명시 CWE / git diff 변경분 / KEV 우선순위 중 채택안)
-- 데이터 흐름 (PR 이벤트 → 파이프라인 실행 → 결과 회신)
+`docs/system-architecture.md`에 시스템 컴포넌트 다이어그램·데이터 흐름을 문서화했다.
+"선택적 분석"의 정의는 **사용자 명시 CWE 선택**으로 확정(git diff 변경분 방식은 되돌림 — Phase 4 참고).
 
 ---
 

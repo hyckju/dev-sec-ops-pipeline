@@ -13,7 +13,7 @@
 핵심 차별점은 두 가지다.
 
 1. **실시간 CVE 연동**: 미국 국가 취약점 데이터베이스(NVD)에서 최신 취약점 정보를 실시간으로 가져와 검사 결과에 반영한다.  
-2. **선택적 분석(Selective Analysis)**: 전체 코드가 아닌 이번 PR에서 변경된 파일만 선별하여 검사한다. 검사 시간과 불필요한 알림을 줄이는 핵심 설계 결정이다.
+2. **선택적 분석(Selective Analysis)**: 전체 코드를 항상 모든 취약점 유형으로 검사하는 대신, **검사할 CWE(취약점 유형) 항목을 사용자가 선택**하게 한다. 불필요한 룰 실행과 알림을 줄이는 핵심 설계 결정이다.
 
 ---
 
@@ -27,7 +27,7 @@
 │        │                                                        │
 │        ▼                                                        │
 │   GitHub Actions (secscan.yml)                                  │
-│   - PR diff 추출 (변경 파일 목록)                                │
+│   - 검사할 CWE 목록 결정 (리포 설정 SECSCAN_CWE_IDS, 미설정 시 기본 6종)│
 │   - 백엔드 API 호출 (POST /api/v1/pipelines/)                   │
 │   - 결과 폴링 (GET /api/v1/pipelines/{id}/status)               │
 │   - PR 코멘트 자동 작성                                          │
@@ -73,10 +73,11 @@
 ① 개발자가 GitHub에 Pull Request(PR) 생성
         │
 ② GitHub Actions 워크플로 자동 트리거
-   - git diff --name-only 로 변경된 파일 목록 추출
+   - 리포 Variables `SECSCAN_CWE_IDS`(쉼표 구분, 예: "CWE-89,CWE-79")로 검사할 CWE 선택
+     미설정 시 백엔드 기본값(6종 전체)으로 폴백
    - 백엔드 API에 파이프라인 실행 요청
      POST /api/v1/pipelines/
-     { repo_url, changed_files: ["src/auth.py", ...] }
+     { github_url, selected_cwe_ids: ["CWE-89", "CWE-79"] }
         │
 ③ 백엔드: 파이프라인 6단계 순차 실행
    │
@@ -84,16 +85,14 @@
    ├── [2] Install: 프로젝트 의존성 설치
    ├── [3] Test: 기존 테스트 스위트 실행
    │
-   ├── [4] Security Scan ★ (핵심 단계)
+   ├── [4] Security Scan ★ (핵심 단계) — selected_cwe_ids만 순회
    │     │
-   │     ├── NVD API: CWE별 최신 CVE 목록 조회 + 로컬 캐싱
+   │     ├── [선택적 분석] 선택된 CWE 하나씩 순차 처리 (선택 안 된 CWE는 애초에 실행 안 함)
    │     │
-   │     ├── Semgrep: CWE 룰로 전체 코드 정적 분석
+   │     ├── NVD API: 해당 CWE의 최신 CVE 목록 조회 + 로컬 캐싱
+   │     │
+   │     ├── Semgrep: 해당 CWE 룰만 정적 분석
    │     │     └── 결과: finding(취약점 후보) 목록
-   │     │
-   │     ├── [선택적 분석] changed_files와 finding 매칭
-   │     │     변경된 파일의 finding만 남기고 나머지 제거
-   │     │     → scan_mode=selective / findings 비율 기록
    │     │
    │     ├── CVE 정보 매핑: CVSS 점수 → 심각도(critical/high/medium/low)
    │     └── Claude AI: 각 취약점에 대한 수정 권고 생성
@@ -118,39 +117,36 @@
 
 ### 배경
 
-기존 보안 도구는 PR이 올라올 때마다 전체 코드를 다시 검사한다.  
-파일이 수천 개인 대형 프로젝트에서는 검사 시간이 수십 분에 달해 배포 병목이 발생한다.
+기존 보안 도구는 지원하는 모든 취약점 유형을 항상 전부 검사한다.  
+그러나 프로젝트마다 실제로 우려하는 취약점 유형은 다르다(예: 웹 서비스는 XSS/SQLi 중심, 내부 배치 스크립트는 커맨드 인젝션 중심). 관심 없는 유형까지 매번 전부 검사하면 시간과 알림(노이즈)이 낭비된다.
 
-### 채택 방식: **사후 필터(Post-filter)**
+### 채택 방식: **사전 선택(Pre-select) — 요청 단계에서 검사 항목 지정**
 
 ```
-전체 코드 Semgrep 스캔 실행
+사용자/CI가 검사할 CWE 목록 선택
+   (API 요청 selected_cwe_ids 또는 CI 리포 설정 SECSCAN_CWE_IDS)
         │
         ▼
-finding 목록 (전체 파일 기준)
+파이프라인은 선택된 CWE만 순회
         │
-        ▼
-changed_files와 file_path 매칭
-        │
-        ├── 매칭 O → 결과에 포함
-        └── 매칭 X → 제거 (이번 PR과 무관한 취약점)
+        ├── CWE-89 선택됨  → NVD 조회 + Semgrep 룰 실행
+        ├── CWE-79 선택됨  → NVD 조회 + Semgrep 룰 실행
+        └── CWE-22 미선택 → 아예 실행하지 않음 (결과에 나타나지도 않음)
 ```
 
-**사후 필터를 선택한 이유**:
-- Semgrep은 파일 단위 지정 스캔이 가능하나, 룰 캐시 효율과 cross-file 분석은 전체 스캔이 유리하다.
-- AI(Claude) 호출 비용이 높으므로, 필터 이후의 finding에만 AI를 적용하여 비용을 줄인다.
-- 변경 파일이 0개(빈 목록)이면 자동으로 전수 스캔으로 전환 — 하위 호환 보장.
+**사전 선택을 채택한 이유**:
+- 선택되지 않은 CWE는 애초에 Semgrep 룰/NVD 조회 자체를 실행하지 않으므로, 실제로 검사 시간이 줄어든다(사후 필터와 달리 "일단 다 스캔하고 버리는" 낭비가 없다).
+- API 요청 하나로 결정되는 단순한 값(문자열 목록)이라 CI 설정(`SECSCAN_CWE_IDS`)만으로 온/오프할 수 있다 — 코드 수정 불필요.
+- 값을 지정하지 않으면 백엔드 기본값(6종 CWE 전체)으로 자동 폴백 — 하위 호환 보장.
 
 ### 측정 데이터 자동 수집
 
-11월 기업 테스트베드 실증에서 성능을 측정하기 위해, 매 스캔마다 아래 데이터를 자동 기록한다.
+11월 기업 테스트베드 실증에서 성능(탐지 정확도/속도)을 측정하기 위해, 매 스캔마다 아래 데이터를 자동 기록한다.
 
 | 항목 | 설명 |
 |---|---|
-| `scan_mode` | `selective` 또는 `full` |
-| `findings_before_filter` | 필터 전 finding 총 수 |
-| `findings_after_filter` | 최종 보고 finding 수 |
-| `elapsed` | CWE별 소요 시간 |
+| `cwe_scan_times` | CWE별 소요 시간(NVD 조회 + Semgrep + AI 후처리 합산) |
+| `vulnerabilities` | CWE별 탐지 finding 수 |
 
 ---
 

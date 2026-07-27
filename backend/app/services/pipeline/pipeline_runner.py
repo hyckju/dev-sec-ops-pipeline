@@ -120,7 +120,6 @@ class PipelineRunner:
         db: AsyncSession,
         selected_cwe_ids: list[str] | None = None,
         selected_cve_fields: list[str] | None = None,
-        changed_files: list[str] | None = None,
     ) -> None:
         pipeline = await self._fetch_pipeline(pipeline_id, db)
         if pipeline is None:
@@ -145,7 +144,6 @@ class PipelineRunner:
             "package_manager": "unknown",
             "selected_cwe_ids": _cwe_ids,
             "selected_cve_fields": _cve_fields,
-            "changed_files": changed_files,
             "cve_map": {},
             "cve_list": [],
             "vulnerabilities": [],
@@ -173,7 +171,6 @@ class PipelineRunner:
             # ── 언어 감지 ──────────────────────────────────────────────
             clone_repo_path = context["repo_path"]
             execution_repo_path = detect_project_root(clone_repo_path)
-            context["repo_root_path"] = clone_repo_path
             context["repo_path"] = execution_repo_path
 
             language = detect_language(execution_repo_path)
